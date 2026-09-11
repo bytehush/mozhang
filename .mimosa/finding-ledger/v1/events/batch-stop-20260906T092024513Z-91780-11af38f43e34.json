@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "mimosa-finding-ledger-batch/v1",
+  "batchId": "stop-20260906T092024513Z-91780-11af38f43e34",
+  "runId": "20260906T092024513Z-91780-11af38f43e34",
+  "runStatus": "completed",
+  "coverage": {
+    "status": "complete",
+    "reasons": []
+  },
+  "source": {
+    "component": "zcode-hook",
+    "operationId": "Stop"
+  },
+  "revision": null,
+  "diffHash": "a36e76fa10aaeaa4646d615b53f054ad98a1f79556ae18796b2771572c485bea",
+  "rulesVersion": "unavailable",
+  "sessionHash": "162066a88a0da40f3018b347d6bf4577f83a0e7ef87c0027c4cf4433ec48222e",
+  "reportRef": ".mimosa/reports/task-review-sess_bf1cbc85-7a2a-42c9-a711-c1e0f8a92420-20260906T092024513Z-91780-11af38f43e34.json",
+  "events": [],
+  "observedFindingIds": [],
+  "verifiedFiles": [
+    {
+      "file": "js/app.js",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "_v09_chat_sessions.py",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "_v09_chat_core.py",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "_v09_chat_menus.py",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "js/chat.js",
+      "direct": "complete",
+      "projectContext": "partial"
+    }
+  ],
+  "recordedAt": "2026-09-06T09:20:24.915Z"
+}

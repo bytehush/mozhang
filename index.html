@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>墨账 · 多账本记账</title>
+<script>
+  /* 临时诊断：收集加载期与运行期未捕获错误（含堆栈） */
+  window.__errors = [];
+  window.addEventListener('error', function (e) {
+    window.__errors.push((e.message || '未知错误') + ' @ ' + (e.filename || '').split('/').pop() + ':' + e.lineno + '\n' + (e.error && e.error.stack ? e.error.stack.split('\n').slice(0, 4).join('\n') : ''));
+  });
+</script>
+<link rel="icon" type="image/png" href="美术资源/应用图标/favicon.png">
+<link rel="stylesheet" href="css/style.css">
+<script src="libs/chart.umd.js"></script>
+</head>
+<body>
+
+<div class="bg-blob b1"></div>
+<div class="bg-blob b2"></div>
+<div class="bg-blob b3"></div>
+
+<!-- ================= 侧边导航（可收起） ================= -->
+<aside class="sidebar" id="sidebar">
+  <div class="side-brand">
+    <div class="seal">账</div>
+    <div class="brand-text">
+      <div class="brand-name">墨 账</div>
+      <div class="brand-sub">多账本记账</div>
+    </div>
+  </div>
+  <!-- 账本切换器 -->
+  <div class="ledger-switch" id="ledger-switch">
+    <button class="ls-btn" id="ls-btn" title="切换账本">
+      <span class="ls-ico" id="ls-ico" data-icon="tpl-hourly" data-fallback="⏱️"></span>
+      <span class="ls-name" id="ls-name">服装厂计时工</span>
+      <span class="ls-chev" data-icon="ui-chevron-down" data-fallback="▾"></span>
+    </button>
+    <div class="ls-menu hidden" id="ls-menu"></div>
+  </div>
+  <nav class="side-nav" id="side-nav">
+    <button class="side-item active" data-tab="table"><span class="ico" data-icon="nav-table" data-fallback="📋"></span><span class="txt">记录表</span></button>
+    <button class="side-item" data-tab="charts"><span class="ico" data-icon="nav-chart" data-fallback="📈"></span><span class="txt">图表</span></button>
+    <button class="side-item" data-tab="ai"><span class="ico" data-icon="nav-ai" data-fallback="🎴"></span><span class="txt">AI 军师</span></button>
+    <button class="side-item" data-tab="settings"><span class="ico" data-icon="nav-settings" data-fallback="⚙️"></span><span class="txt">设置</span></button>
+  </nav>
+  <div class="side-foot">
+    <span class="txt">V0.9.6 · 分组API</span>
+    <button class="side-collapse" id="btn-collapse" title="收起/展开侧边栏"><span data-icon="ui-collapse" data-fallback="⟨"></span></button>
+  </div>
+</aside>
+<div class="drawer-backdrop" id="drawer-backdrop"></div>
+
+<!-- ================= 主区域 ================= -->
+<div class="main-wrap">
+  <header class="topbar">
+    <button class="menu-btn" id="btn-menu" title="打开导航"><span data-icon="ui-menu" data-fallback="☰"></span></button>
+    <h1 id="page-title">记录表</h1>
+    <span class="greeting" id="greeting">账目分明，心中自有乾坤 📜</span>
+  </header>
+
+  <main>
+
+    <!-- ================= 记录表（合并：操作条 + 明细 + 汇总） ================= -->
+    <section id="tab-table" class="panel active">
+      <div class="action-bar">
+        <button id="btn-add" class="btn primary"><span class="bi" data-icon="action-record" data-fallback="✒️"></span>记录</button>
+        <button id="btn-import" class="btn"><span class="bi" data-icon="action-import" data-fallback="⬇"></span>导入账单</button>
+        <button id="btn-export" class="btn"><span class="bi" data-icon="action-export" data-fallback="⬆"></span>导出账单</button>
+        <button id="btn-select" class="btn"><span class="bi" data-icon="ui-check" data-fallback="☑"></span>多选</button>
+      </div>
+
+      <div class="card">
+        <div class="detail-head">
+          <h2 id="detail-title">工作记录明细</h2>
+          <div class="detail-tools">
+            <div class="seg" id="view-seg" role="group" aria-label="视图切换">
+              <button class="seg-btn active" data-view="table" title="表格视图"><span class="bi" data-icon="nav-table" data-fallback="▤"></span></button>
+              <button class="seg-btn" data-view="cards" title="卡片视图"><span class="bi" data-icon="ui-grid" data-fallback="▦"></span></button>
+            </div>
+            <div class="seg hidden" id="filter-seg" role="group" aria-label="筛选"><!-- 选项由账本模板动态生成 --></div>
+          </div>
+        </div>
+        <div class="table-wrap" id="table-view">
+          <table id="records-table">
+            <thead id="records-thead"><!-- 表头由账本模板生成 --></thead>
+            <tbody id="records-tbody"></tbody>
+          </table>
+        </div>
+        <div class="cards-view hidden" id="cards-view"></div>
+        <p class="empty-tip hidden" id="filter-empty">当前筛选下没有记录，切换回「全部」看看。</p>
+        <p class="empty-tip" id="table-empty">还没有记录，点击上方「记录」按钮添加第一条吧。</p>
+      </div>
+
+      <div class="summary-cards" id="summary-cards"></div>
+    </section>
+
+    <!-- ================= 图表 ================= -->
+    <section id="tab-charts" class="panel">
+      <div class="card">
+        <div class="chart-head">
+          <h2>数据图表</h2>
+          <select id="chart-range">
+            <option value="7">最近 7 条</option>
+            <option value="14">最近 14 条</option>
+            <option value="30">最近 30 条</option>
+            <option value="all" selected>全部记录</option>
+          </select>
+        </div>
+        <div id="charts-wrap"><!-- 图表卡片由账本模板动态生成 --></div>
+        <p class="chart-empty" id="charts-empty">暂无数据，请先在「记录表」页添加记录。</p>
+      </div>
+    </section>
+
+    <!-- ================= AI 军师（对话） ================= -->
+    <section id="tab-ai" class="panel">
+      <div class="chat-stage">
+        <div class="chat-head">
+          <div class="session-wrap">
+            <button id="btn-session" class="session-btn" title="切换/新建会话">
+              <span data-icon="ui-ledger" data-fallback="📒"></span>
+              <span id="session-title">会话</span>
+              <span class="sb-chev" data-icon="ui-chevron-down" data-fallback="▾"></span>
+            </button>
+            <div id="session-menu" class="session-menu hidden"></div>
+          </div>
+          <button id="btn-chat-clear" class="chat-clear" title="清空当前会话的消息">清空本会话</button>
+        </div>
+        <div class="chat-scroll-wrap">
+          <div class="chat-scroll" id="chat-scroll">
+            <div class="chat-empty" id="chat-empty">
+              <div class="ce-seal" data-icon="nav-ai" data-fallback="🎴"></div>
+              <p class="ce-title">我是 AI 军师，读过你这本账的全部记录</p>
+              <p class="ce-sub">点下面的问题直接开问，或自己在下方输入：</p>
+              <div class="chat-chips" id="chat-chips">
+                <button class="chip" data-q="请为我生成一份完整的数据分析报告，按你的报告结构来。">📋 完整分析报告</button>
+                <button class="chip" data-q="最近一段时间的趋势怎么样？给我讲讲。">📈 最近趋势如何</button>
+                <button class="chip" data-q="结合我的记录，给我几条具体的健康建议。">🩺 健康建议</button>
+                <button class="chip" data-q="基于我的记录，怎样安排能多挣一点？">💰 怎么多挣一点</button>
+              </div>
+            </div>
+            <div id="chat-list"></div>
+          </div>
+          <button id="chat-jump" class="chat-jump hidden">↓ 回到底部</button>
+        </div>
+        <div class="chat-dock">
+          <textarea id="chat-input" rows="1" placeholder="问点什么…（Enter 发送）"></textarea>
+          <div class="dock-foot">
+            <div class="model-wrap">
+              <button id="btn-model" class="model-btn" title="切换模型">
+                <span class="mb-dot"></span>
+                <span id="model-label">模型</span>
+                <span class="mb-chev" data-icon="ui-chevron-down" data-fallback="▾"></span>
+              </button>
+            </div>
+            <span class="dock-hint" id="chat-hint">Enter 发送 / Shift+Enter 换行</span>
+            <span class="dock-space"></span>
+            <button id="btn-chat-stop" class="btn danger hidden">停止</button>
+            <button id="btn-chat-send" class="btn primary">发送</button>
+          </div>
+        </div>
+        <!-- 模型菜单挂在舞台层：输入坞的 clip-path 会裁剪内部弹出层 -->
+        <div id="model-menu" class="model-menu hidden"></div>
+      </div>
+    </section>
+
+  <!-- ================= 设置 ================= -->
+  <section id="tab-settings" class="panel">
+    <div class="card">
+      <h2>账本说明</h2>
+      <p class="hint">每种账是一个「账本」，在左侧切换；账本名称和默认时薪/单价等参数，在左侧账本菜单的「账本设置」里调整。</p>
+    </div>
+
+    <div class="card">
+      <h2>模型设置</h2>
+      <p class="hint">一个厂商 = 一套 API（接口地址 + Key）+ 多个模型，各自独立保存：切换厂商标签后，之前填过的 Key 会自动带出，没填过就重新填。切到哪个厂商，对话就用哪家的 API。</p>
+      <div class="seg" id="api-tabs" style="margin-bottom:14px"></div>
+      <div class="form-grid">
+        <div class="form-row">
+          <label>接口地址（OpenAI 兼容 chat/completions）</label>
+          <input type="text" id="s-baseurl" placeholder="https://…" spellcheck="false">
+        </div>
+        <div class="form-row">
+          <label>API Key</label>
+          <input type="password" id="s-apikey" placeholder="在厂商官网控制台创建并粘贴到这里">
+        </div>
+      </div>
+      <h3 class="group-title" style="margin-top:14px">模型列表（当前厂商可配置多个模型）</h3>
+      <p class="hint">点模型行左侧圆点选用当前模型；对话页的模型快切菜单只显示各厂商已配置好的模型。</p>
+      <div class="mp-head">
+        <span></span><span>显示名称</span><span>模型 ID</span><span>上下文(K)</span><span>最大输出</span><span></span>
+      </div>
+      <div id="s-models"></div>
+      <div class="btn-row">
+        <button id="btn-add-model" class="btn ghost">＋ 添加模型</button>
+      </div>
+      <p class="hint">智谱 glm-4-flash 免费：浏览器打开 <b>open.bigmodel.cn</b> → 注册/登录 → 控制台 → API Keys → 创建并复制完整 Key。</p>
+      <div class="btn-row">
+        <button id="btn-save-model" class="btn primary commit-btn">
+          <span class="c-text">保存当前厂商设置</span>
+          <span class="c-spinner" aria-hidden="true"></span>
+          <span class="c-result"><span data-icon="ui-check" data-fallback="✓"></span><em>已保存</em></span>
+        </button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>数据管理</h2>
+      <p class="hint">所有数据只保存在这台电脑的浏览器里（localStorage）。导入、导出备份已移到「记录表」页顶部，建议定期导出备份文件。</p>
+      <div class="btn-row">
+          <button id="btn-sample" class="btn ghost">填入示例数据（体验用）</button>
+          <button id="btn-clear" class="btn danger">清空全部数据</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ================= 悬浮窗：记录账单 ================= -->
+<div class="modal-mask hidden" id="modal-record">
+  <div class="modal" role="dialog" aria-label="记录账单">
+    <div class="modal-head">
+      <h2><span class="mh" data-icon="action-record" data-fallback="✒️"></span>记录账单</h2>
+      <button class="modal-close" data-close="modal-record" title="关闭"><span data-icon="ui-close" data-fallback="✕"></span></button>
+    </div>
+    <div class="modal-body">
+      <div id="form-fields"><!-- 表单由当前账本的模板动态渲染 --></div>
+      <div class="preview-box" id="preview-box"></div>
+      <div class="btn-row">
+        <button id="btn-save" class="btn primary commit-btn">
+          <span class="c-text">保存记录</span>
+          <span class="c-spinner" aria-hidden="true"></span>
+          <span class="c-result"><span data-icon="ui-check" data-fallback="✓"></span><em>已保存</em></span>
+        </button>
+        <button id="btn-reset-form" class="btn ghost">重置</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 悬浮窗：新建账本 ================= -->
+<div class="modal-mask hidden" id="modal-ledger-new">
+  <div class="modal" role="dialog" aria-label="新建账本">
+    <div class="modal-head">
+      <h2><span class="mh" data-icon="ui-ledger" data-fallback="📒"></span>新建账本</h2>
+      <button class="modal-close" data-close="modal-ledger-new" title="关闭"><span data-icon="ui-close" data-fallback="✕"></span></button>
+    </div>
+    <div class="modal-body">
+      <p class="hint">选一种记账模板，起个名字就能开记。</p>
+      <div class="tpl-pick" id="tpl-pick"></div>
+      <div class="form-row">
+        <label>账本名称 <span class="req">*</span></label>
+        <input type="text" id="nl-name" placeholder="如：张姐的计时工账">
+      </div>
+      <div id="nl-extra"></div>
+      <div class="btn-row">
+        <button id="btn-create-ledger" class="btn primary commit-btn">
+          <span class="c-text">创建账本</span>
+          <span class="c-spinner" aria-hidden="true"></span>
+          <span class="c-result"><span data-icon="ui-check" data-fallback="✓"></span><em>已创建</em></span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 悬浮窗：账本设置 ================= -->
+<div class="modal-mask hidden" id="modal-ledger-set">
+  <div class="modal" role="dialog" aria-label="账本设置">
+    <div class="modal-head">
+      <h2><span class="mh" data-icon="ui-ledger" data-fallback="📒"></span>账本设置</h2>
+      <button class="modal-close" data-close="modal-ledger-set" title="关闭"><span data-icon="ui-close" data-fallback="✕"></span></button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <label>账本名称 <span class="req">*</span></label>
+        <input type="text" id="stl-name">
+      </div>
+      <div id="stl-extra"></div>
+      <h3 class="group-title" style="margin-top:18px">自定义字段</h3>
+      <p class="hint">给这本账加专属栏目（如"布料款""翻新次数"），表单、表格、卡片会自动跟上；历史记录里没填过的留空。停用的字段数据保留，删除则连历史值一起清掉。</p>
+      <div id="stl-cf"></div>
+      <div class="btn-row">
+        <button id="btn-save-ledger" class="btn primary commit-btn">
+          <span class="c-text">保存账本设置</span>
+          <span class="c-spinner" aria-hidden="true"></span>
+          <span class="c-result"><span data-icon="ui-check" data-fallback="✓"></span><em>已保存</em></span>
+        </button>
+      </div>
+      <h3 class="group-title" style="margin-top:18px">危险区</h3>
+      <p class="hint">删除账本会连同里面的全部记录一起删除且无法恢复，建议先在「数据管理」导出备份。</p>
+      <div class="btn-row">
+        <button id="btn-del-ledger" class="btn danger"><span class="bi" data-icon="ui-trash" data-fallback="🗑"></span>删除当前账本</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 悬浮窗：导入账单 ================= -->
+<div class="modal-mask hidden" id="modal-import">
+  <div class="modal" role="dialog" aria-label="导入账单">
+    <div class="modal-head">
+      <h2><span class="mh" data-icon="action-import" data-fallback="⬇"></span>导入账单</h2>
+      <button class="modal-close" data-close="modal-import" title="关闭"><span data-icon="ui-close" data-fallback="✕"></span></button>
+    </div>
+    <div class="modal-body">
+      <p class="hint">选择之前「导出账单」生成的 JSON 备份文件。导入的记录会与现有记录<b>合并</b>（按日期+时段自动去重），备份里的通用/模型设置也会一并恢复。</p>
+      <div class="drop-tip"><span class="dt-ico" data-icon="ui-folder" data-fallback="📁"></span>点击下方按钮选择备份文件（.json）</div>
+      <div class="btn-row">
+        <button id="btn-import-pick" class="btn primary">选择文件并导入</button>
+      </div>
+      <input type="file" id="import-file" accept=".json" class="hidden">
+    </div>
+  </div>
+</div>
+
+<!-- ================= 悬浮窗：导出账单 ================= -->
+<div class="modal-mask hidden" id="modal-export">
+  <div class="modal" role="dialog" aria-label="导出账单">
+    <div class="modal-head">
+      <h2><span class="mh" data-icon="action-export" data-fallback="⬆"></span>导出账单</h2>
+      <button class="modal-close" data-close="modal-export" title="关闭"><span data-icon="ui-close" data-fallback="✕"></span></button>
+    </div>
+    <div class="modal-body">
+      <p class="hint" id="export-stats">正在统计…</p>
+      <p class="hint">备份文件为 JSON 格式，包含全部工作记录和设置，可用「导入账单」恢复或换机迁移。</p>
+      <div class="btn-row">
+        <button id="btn-export-download" class="btn primary">下载备份文件</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<!-- 底部批量操作条（SELECT 多选模式） -->
+<div id="batch-bar" class="batch-bar" aria-live="polite">
+  <span class="bb-count">已选 <b id="bb-count">0</b> 条</span>
+  <span class="bb-sep"></span>
+  <button id="bb-toggle-all" class="bb-btn">全选</button>
+  <button id="bb-delete" class="bb-btn danger"><span class="bi" data-icon="ui-trash" data-fallback="🗑"></span>删除</button>
+  <button id="bb-exit" class="bb-btn">完成</button>
+</div>
+
+<script src="js/templates.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/icons.js"></script>
+<script src="js/chat.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

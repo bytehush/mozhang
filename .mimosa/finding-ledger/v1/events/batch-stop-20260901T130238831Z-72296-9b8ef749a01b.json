@@ -1,0 +1,69 @@
+{
+  "schemaVersion": "mimosa-finding-ledger-batch/v1",
+  "batchId": "stop-20260901T130238831Z-72296-9b8ef749a01b",
+  "runId": "20260901T130238831Z-72296-9b8ef749a01b",
+  "runStatus": "completed",
+  "coverage": {
+    "status": "complete",
+    "reasons": []
+  },
+  "source": {
+    "component": "zcode-hook",
+    "operationId": "Stop"
+  },
+  "revision": null,
+  "diffHash": "8cc6d3ad05d3afa5c7335490a2986f5f1e04fc116c92ff6ab130d468e510c9bd",
+  "rulesVersion": "unavailable",
+  "sessionHash": "fe9429161c36b249fa42f34a9100f5a9fe8e98fa4819180d6acc469bb0f7ff9d",
+  "reportRef": ".mimosa/reports/task-review-sess_f2c4be37-9976-4bef-ab1e-acb0b1d4b0c5-20260901T130238831Z-72296-9b8ef749a01b.json",
+  "events": [
+    {
+      "eventId": "hook-009aa8fa16351d1fdc9b087b6108a18c",
+      "findingId": "mimosa-acdb68f64365ad003d504340",
+      "type": "finding_observed",
+      "at": "2026-09-01T12:52:39.151Z",
+      "identity": {
+        "projectRelativeFile": "js/app.js",
+        "ruleId": "security",
+        "codeEvidenceHash": "ab1ac2029eb61401bf65a5125322cb93f5081cde70ef5d37426a90e42dc73411",
+        "confidence": "stable"
+      },
+      "scope": "direct",
+      "line": 68,
+      "endLine": 68,
+      "reasonCode": "advisory",
+      "reportedToAgent": true,
+      "evidence": {
+        "kind": "source",
+        "boundary": "candidate",
+        "producer": "deterministic",
+        "evidenceHash": "ab1ac2029eb61401bf65a5125322cb93f5081cde70ef5d37426a90e42dc73411"
+      },
+      "sequence": 0
+    }
+  ],
+  "observedFindingIds": [],
+  "verifiedFiles": [
+    {
+      "file": "server.js",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "js/app.js",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "js/charts.js",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "js/ai.js",
+      "direct": "complete",
+      "projectContext": "partial"
+    }
+  ],
+  "recordedAt": "2026-09-01T13:02:39.250Z"
+}
