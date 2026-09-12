@@ -5,40 +5,17 @@
 (function () {
   'use strict';
 
-  const LS_SETTINGS = 'jigong_settings';        // 全局：AI 模型配置
-  const LS_LEDGERS = 'jigong_ledgers';          // 账本列表（元数据）
-  const LS_ACTIVE = 'jigong_active_ledger';
-  const LS_UI = 'jigong_ui';                    // { 账本id: {view, filter} }
-  const LS_SIDEBAR = 'jigong_sidebar_collapsed';
-  const LS_V1_BACKUP = 'jigong_records_v1_backup';
-
-  const DEFAULT_SETTINGS = {};   // 其余（apis/activeApi）由迁移生成
-
-  // 各厂商 OpenAI 兼容接口：预填地址与常用模型档案（一个厂商 = 一套独立 API + 模型列表）
-  const API_PRESETS = {
-    zhipu: { name: '智谱AI', url: 'https://open.bigmodel.cn/api/paas/v4/chat/completions', models: [
-      { id: 'm-glm-flash', model: 'glm-4-flash', label: 'GLM-4-Flash（免费）', context: 128, maxOut: 4095 },
-      { id: 'm-glm45-flash', model: 'glm-4.5-flash', label: 'GLM-4.5-Flash（免费）', context: 128, maxOut: 4095 },
-    ]},
-    deepseek: { name: 'DeepSeek', url: 'https://api.deepseek.com/chat/completions', models: [
-      { id: 'm-ds-chat', model: 'deepseek-chat', label: 'DeepSeek Chat', context: 64, maxOut: 8192 },
-      { id: 'm-ds-reasoner', model: 'deepseek-reasoner', label: 'DeepSeek Reasoner', context: 64, maxOut: 8192 },
-    ]},
-    qwen: { name: '通义千问', url: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', models: [
-      { id: 'm-qw-flash', model: 'qwen-flash', label: '通义千问-Flash', context: 1000, maxOut: 8192 },
-    ]},
-    moonshot: { name: 'Kimi', url: 'https://api.moonshot.cn/v1/chat/completions', models: [
-      { id: 'm-kimi-8k', model: 'moonshot-v1-8k', label: 'Kimi-8K', context: 8, maxOut: 4095 },
-    ]},
-    custom: { name: '自定义', url: '', models: [] },
-  };
+  // ---------- 存储（持久层在 js/store.js，此处引用） ----------
+  const STORE = window.STORE;
+  const { LS_SETTINGS, LS_LEDGERS, LS_ACTIVE, LS_UI, LS_SIDEBAR, LS_V1_BACKUP } = STORE.LS;
+  const API_PRESETS = STORE.PRESETS;
   const TPL = () => window.JG_TEMPLATES;
 
   const EASE_SPRING = 'cubic-bezier(.3, 1.25, .5, 1)';
   const EASE_OUT = 'ease-out';
   const EASE_IN = 'ease-in';   // EASE_* 部分供 modals.js/records 动效共用
 
-  let settings = loadSettings();
+  let settings = STORE.loadSettings();
   let ledgers = [];
   let activeId = null;
   let records = [];             // 当前账本的记录
@@ -52,10 +29,6 @@
   const { $, wait, uid, round2, money, fmtDate, esc, toast, REDUCED } = window.UTIL;
   const { open: openModal, close: closeModal, init: initModals, label: setCommitLabel, done: setCommitDone, play: commitPlay } = window.MODAL;
 
-  function loadSettings() {
-    try { return Object.assign({}, DEFAULT_SETTINGS, JSON.parse(localStorage.getItem(LS_SETTINGS)) || {}); }
-    catch { return Object.assign({}, DEFAULT_SETTINGS); }
-  }
   // 模型设置迁移（V0.9.6 厂商分组制）：旧扁平结构 → 每厂商独立 API（地址/Key/模型列表）
   function migrateModelSettings() {
     if (settings.apis && settings.activeApi) return;
@@ -88,30 +61,14 @@
     ['provider', 'baseUrl', 'apiKey', 'model', 'models', 'currentModelId'].forEach(k => delete settings[k]);
     saveSettingsStore();
   }
-  function apiName(p) { return (API_PRESETS[p] || {}).name || p; }
-  function ensureApiEntry(p) {
-    if (settings.apis[p]) return settings.apis[p];
-    const preset = API_PRESETS[p] || { url: '', name: p, models: [] };
-    settings.apis[p] = {
-      baseUrl: preset.url || '', apiKey: '',
-      models: (preset.models || []).map(m => ({ ...m })),
-      currentModelId: (preset.models || [])[0]?.id || null,
-    };
-    return settings.apis[p];
-  }
-  function saveSettingsStore() { localStorage.setItem(LS_SETTINGS, JSON.stringify(settings)); }
+  function apiName(p) { return window.STORE.apiName(p); }
+  function ensureApiEntry(p) { return window.STORE.ensureApiEntry(settings.apis, p); }
 
   // ---------- 账本存储 ----------
-  function loadLedgers() {
-    try { const l = JSON.parse(localStorage.getItem(LS_LEDGERS)); return Array.isArray(l) ? l : []; }
-    catch { return []; }
-  }
-  function saveLedgersStore() { localStorage.setItem(LS_LEDGERS, JSON.stringify(ledgers)); }
-  function loadLedRecords(id) {
-    try { return JSON.parse(localStorage.getItem('jigong_led_' + id)) || []; }
-    catch { return []; }
-  }
-  function saveLedRecords(id, recs) { localStorage.setItem('jigong_led_' + id, JSON.stringify(recs)); }
+  function loadLedgers() { return STORE.loadLedgers(); }
+  function saveLedgersStore() { STORE.saveLedgers(ledgers); }
+  function loadLedRecords(id) { return STORE.loadLedRecords(id); }
+  function saveLedRecords(id, recs) { STORE.saveLedRecords(id, recs); }
 
   // 首次启动 / 旧版数据：迁移到多账本（迁移前旧数据留存备份键）
   function ensureLedgers() {

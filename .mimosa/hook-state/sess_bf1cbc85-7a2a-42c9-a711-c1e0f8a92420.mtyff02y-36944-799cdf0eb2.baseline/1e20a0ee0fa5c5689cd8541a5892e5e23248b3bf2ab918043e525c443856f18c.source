@@ -34,6 +34,14 @@
     const d = new Date(dateStr + 'T00:00:00');
     return isNaN(d) ? '' : '周' + WEEK[d.getDay()];
   }
+  // 计算两个时间之间的小时数；结束<=开始 视为跨零点
+  function hoursBetween(start, end) {
+    const [sh, sm] = start.split(':').map(Number);
+    const [eh, em] = end.split(':').map(Number);
+    let mins = (eh * 60 + em) - (sh * 60 + sm);
+    if (mins <= 0) mins += 24 * 60;
+    return round2(mins / 60);
+  }
 
   // 全局 toast（页面唯一 #toast 元素；app.js/chat.js 共用，不再互相依赖）
   let toastTimer = null;
@@ -47,6 +55,6 @@
   }
 
   window.UTIL = {
-    REDUCED, $, wait, esc, uid, round2, money, fmtDate, weekdayCN, toast,
+    REDUCED, $, wait, esc, uid, round2, money, fmtDate, weekdayCN, hoursBetween, toast,
   };
 })();

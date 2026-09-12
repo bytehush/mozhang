@@ -1,14 +1,37 @@
 {
   "schemaVersion": "mimosa-hook-status/v1",
-  "recordedAt": "2026-09-12T03:06:15.298Z",
+  "recordedAt": "2026-09-12T13:45:34.661Z",
   "sessionId": "sess_bf1cbc85-7a2a-42c9-a711-c1e0f8a92420",
-  "event": "PostToolUse",
-  "toolName": "Write",
-  "file": "bug修复文档/2026-09-12_修复store抽离连锁断裂.md",
+  "event": "PreToolUse",
+  "toolName": "Edit",
+  "file": "js/app.js",
   "outcome": "clear",
   "coverage": "complete",
   "findingCount": 0,
-  "durationMs": 5,
-  "hostState": "hook_complete",
+  "durationMs": 512,
+  "telemetry": {
+    "schemaVersion": "mimosa-gate-telemetry/v1",
+    "profile": "gate",
+    "operation": "PreToolUse",
+    "outcome": "complete",
+    "latencyMs": 512,
+    "peakMemoryBytes": 136286208,
+    "memoryMeasurement": "max-observed-process-rss",
+    "scannedFiles": 1,
+    "cache": {
+      "hits": 0,
+      "misses": 1,
+      "measurement": "not-applicable"
+    },
+    "denyCount": 0,
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "total": 0,
+      "modelCalls": 0,
+      "measurement": "known-zero"
+    }
+  },
+  "hostState": "hook_complete_waiting_host_tool_decision",
   "reportHint": ".mimosa/reports/"
 }

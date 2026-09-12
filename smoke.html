@@ -19,7 +19,12 @@
      注意：需通过 启动记账APP.bat（即 http://127.0.0.1:8787/smoke.html）打开，
      直接双击文件（file://）会因 localStorage 受限而部分失败。 */
   window.__errors = [];
-  window.addEventListener('error', e => window.__errors.push(e.message));
+  window.addEventListener('error', e => window.__errors.push(
+    (e.message || '') + ' @ ' + (e.filename || '?') + ':' + (e.lineno || '?') + '
+堆栈: ' + (e.error && e.error.stack ? e.error.stack.split('
+').slice(0, 5).join('
+') : '(无堆栈)')
+  ));
 </script>
 <script src="js/utils.js"></script>
 <script src="js/store.js"></script>
@@ -61,8 +66,8 @@
     ok('账本已装载', ledgers.length >= 1);
 
     // ⑤ 厂商 API 分组齐备
-    const apis = (window.STORE.S && window.STORE.S.apis) || null;
-    ok('厂商 API 就绪', !!(apis && Object.keys(apis).length >= 4));
+    const apis = (window.JG.getSettings().apis || {});
+    ok('厂商 API 就绪', Object.keys(apis).length >= 4);
 
     // ⑥ 当前模型档案可用（默认智谱 GLM-4-Flash 预设）
     const cur = window.JG.ModelSwitch.activeInfo();
