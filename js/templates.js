@@ -6,27 +6,9 @@
 (function () {
   'use strict';
 
-  const round2 = n => Math.round(n * 100) / 100;
-  const money = n => '¥' + round2(n).toFixed(2);
-  const WEEK = ['日', '一', '二', '三', '四', '五', '六'];
-  const weekdayCN = s => { const d = new Date(s + 'T00:00:00'); return isNaN(d) ? '' : '周' + WEEK[d.getDay()]; };
 
-  // 记录 id：优先 UUID，兜底用加密安全随机数（不用 Math.random）
-  function uid() {
-    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
-    const buf = new Uint8Array(16);
-    crypto.getRandomValues(buf);
-    return 'r-' + Array.from(buf).map(b => b.toString(16).padStart(2, '0')).join('');
-  }
+  const { uid, round2, money, weekdayCN, hoursBetween } = window.UTIL;
 
-  // 计算两个时间之间的小时数；结束<=开始 视为跨零点
-  function hoursBetween(start, end) {
-    const [sh, sm] = start.split(':').map(Number);
-    const [eh, em] = end.split(':').map(Number);
-    let mins = (eh * 60 + em) - (sh * 60 + sm);
-    if (mins <= 0) mins += 24 * 60;
-    return round2(mins / 60);
-  }
 
   // 按日期聚合（同一天多条合并），升序，label=MM-DD
   function groupByDate(records) {

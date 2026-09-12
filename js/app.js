@@ -34,7 +34,6 @@
   };
   const TPL = () => window.JG_TEMPLATES;
 
-  const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const EASE_SPRING = 'cubic-bezier(.3, 1.25, .5, 1)';
   const EASE_OUT = 'ease-out';
   const EASE_IN = 'ease-in';
@@ -49,26 +48,8 @@
   let ui = { view: 'table', filter: 'all' };   // 当前账本的界面偏好
   let formBuiltFor = null;      // 表单当前是为哪个账本构建的
 
-  // ---------- 工具 ----------
-  function $(id) { return document.getElementById(id); }
-  function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
-  function uid() {
-    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
-    const buf = new Uint8Array(16);
-    crypto.getRandomValues(buf);
-    return 'l-' + Array.from(buf).map(b => b.toString(16).padStart(2, '0')).join('');
-  }
-  function round2(n) { return Math.round(n * 100) / 100; }
-  function money(n) { return '¥' + round2(n).toFixed(2); }
-  function fmtDate(d) {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  }
-  function esc(s) {
-    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
+  // ---------- 工具（公共版在 js/utils.js） ----------
+  const { $, wait, uid, round2, money, fmtDate, esc, toast, REDUCED } = window.UTIL;
 
   function loadSettings() {
     try { return Object.assign({}, DEFAULT_SETTINGS, JSON.parse(localStorage.getItem(LS_SETTINGS)) || {}); }
@@ -151,16 +132,6 @@
       return { migrated: true, count: legacy.length };
     }
     return { migrated: false };
-  }
-
-  let toastTimer = null;
-  function toast(msg) {
-    const t = document.getElementById('toast');
-    if (!t) return;
-    t.textContent = msg;
-    t.classList.add('show');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
   }
 
   function activeLedger() { return ledgers.find(l => l.id === activeId) || ledgers[0]; }
