@@ -93,7 +93,7 @@ async function handleAI(req, res) {
   let clientGone = false;
   res.on('close', () => { clientGone = true; });
   try {
-    const { apiKey, model, messages, temperature, baseUrl, stream, maxTokens } = await readBody(req);
+    const { apiKey, model, messages, temperature, baseUrl, stream, maxTokens, tools } = await readBody(req);
     if (!apiKey) return sendJSON(res, 400, { error: { message: '缺少 API Key，请先到「设置 → 模型设置」填写' } });
     if (!messages || !Array.isArray(messages)) return sendJSON(res, 400, { error: { message: '参数错误：messages 缺失' } });
 
@@ -124,6 +124,8 @@ async function handleAI(req, res) {
         temperature: typeof temperature === 'number' ? temperature : 0.7,
         max_tokens: typeof maxTokens === 'number' ? Math.min(Math.max(maxTokens, 256), 32768) : 3072,
         stream: wantStream,
+        // Agent 工具声明（Function Calling）：仅在客户端声明了工具时透传
+        ...(Array.isArray(tools) && tools.length ? { tools } : {}),
       }),
     });
 

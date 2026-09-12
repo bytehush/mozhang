@@ -1180,6 +1180,7 @@
   window.JG = {
     getRecords: () => records,
     getSettings: () => settings,
+    getLedgers: () => ledgers,          // 供 aitools.js 跨账本查询
     getActiveLedger: () => activeLedger(),
     getActiveTemplate: () => tplOf(activeLedger()),
     switchTab, toast,

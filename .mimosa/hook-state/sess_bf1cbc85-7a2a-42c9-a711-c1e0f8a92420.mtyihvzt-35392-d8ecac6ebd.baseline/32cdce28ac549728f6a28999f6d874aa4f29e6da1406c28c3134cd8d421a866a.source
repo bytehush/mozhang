@@ -29,38 +29,6 @@
   const { $, wait, uid, round2, money, fmtDate, esc, toast, REDUCED } = window.UTIL;
   const { open: openModal, close: closeModal, init: initModals, label: setCommitLabel, done: setCommitDone, play: commitPlay } = window.MODAL;
 
-  // 模型设置迁移（V0.9.6 厂商分组制）：旧扁平结构 → 每厂商独立 API（地址/Key/模型列表）
-  function migrateModelSettings() {
-    if (settings.apis && settings.activeApi) return;
-    const apis = {};
-    // 旧顶层数据（provider/baseUrl/apiKey/models）→ 对应厂商的 API
-    const legacyP = ['zhipu', 'deepseek', 'qwen', 'moonshot', 'custom'].includes(settings.provider)
-      ? settings.provider : null;
-    if (legacyP && (settings.apiKey || settings.baseUrl || (settings.models || []).length)) {
-      apis[legacyP] = {
-        baseUrl: settings.baseUrl || (API_PRESETS[legacyP] || {}).url || '',
-        apiKey: settings.apiKey || '',
-        models: Array.isArray(settings.models) && settings.models.length
-          ? settings.models : ((API_PRESETS[legacyP] || {}).models || []).map(m => ({ ...m })),
-        currentModelId: settings.currentModelId || null,
-      };
-    }
-    // 其余厂商：预填地址与预设模型，Key 留空待填
-    Object.keys(API_PRESETS).forEach(pk => {
-      if (apis[pk]) return;
-      apis[pk] = {
-        baseUrl: (API_PRESETS[pk] || {}).url || '',
-        apiKey: '',
-        models: ((API_PRESETS[pk] || {}).models || []).map(m => ({ ...m })),
-        currentModelId: ((API_PRESETS[pk] || {}).models || [])[0]?.id || null,
-      };
-    });
-    settings.apis = apis;
-    settings.activeApi = legacyP && apis[legacyP] ? legacyP : 'zhipu';
-    // 清理旧顶层字段（已全部迁入 apis）
-    ['provider', 'baseUrl', 'apiKey', 'model', 'models', 'currentModelId'].forEach(k => delete settings[k]);
-    saveSettingsStore();
-  }
   function apiName(p) { return window.STORE.apiName(p); }
   function ensureApiEntry(p) { return window.STORE.ensureApiEntry(settings.apis, p); }
 
@@ -986,7 +954,7 @@
     });
     if (obj.settings && typeof obj.settings === 'object') {
       settings = Object.assign({}, DEFAULT_SETTINGS, settings, obj.settings);
-      saveSettingsStore();
+      STORE.saveSettings(settings);
       applySettingsToUI();
     }
     saveLedgersStore();
@@ -1022,7 +990,7 @@
       settings = Object.assign({}, DEFAULT_SETTINGS, settings, obj.settings, {
         nRate: undefined, oRate: undefined,
       });
-      saveSettingsStore();
+      STORE.saveSettings(settings);
       applySettingsToUI();
     }
     saveLedgersStore();
@@ -1080,19 +1048,19 @@
       const id = row.querySelector('[data-mpcur]').dataset.mpcur;
       const f = api.models.find(x => x.id === id);
       if (!f) return;
-      row.querySelector('[data-mpname]').addEventListener('input', e => { f.label = e.target.value.trim(); saveSettingsStore(); });
-      row.querySelector('[data-mpmodel]').addEventListener('input', e => { f.model = e.target.value.trim(); saveSettingsStore(); });
-      row.querySelector('[data-mpctx]').addEventListener('input', e => { f.context = parseFloat(e.target.value) || 128; saveSettingsStore(); });
-      row.querySelector('[data-mpout]').addEventListener('input', e => { f.maxOut = parseFloat(e.target.value) || 4095; saveSettingsStore(); });
+      row.querySelector('[data-mpname]').addEventListener('input', e => { f.label = e.target.value.trim(); STORE.saveSettings(settings); });
+      row.querySelector('[data-mpmodel]').addEventListener('input', e => { f.model = e.target.value.trim(); STORE.saveSettings(settings); });
+      row.querySelector('[data-mpctx]').addEventListener('input', e => { f.context = parseFloat(e.target.value) || 128; STORE.saveSettings(settings); });
+      row.querySelector('[data-mpout]').addEventListener('input', e => { f.maxOut = parseFloat(e.target.value) || 4095; STORE.saveSettings(settings); });
       row.querySelector('[data-mpcur]').addEventListener('change', e => {
-        if (e.target.checked) { api.currentModelId = id; saveSettingsStore(); }
+        if (e.target.checked) { api.currentModelId = id; STORE.saveSettings(settings); }
         renderModelRows();
       });
       row.querySelector('[data-mpdel]').addEventListener('click', () => {
         if (!confirm(`删除模型「${f.label || f.model}」？`)) return;
         api.models = api.models.filter(x => x.id !== id);
         if (api.currentModelId === id) api.currentModelId = api.models.length ? api.models[0].id : null;
-        saveSettingsStore();
+        STORE.saveSettings(settings);
         renderModelRows();
       });
     });
@@ -1103,7 +1071,7 @@
     editProvider = p;
     const becameActive = settings.activeApi !== p;
     settings.activeApi = p;          // 切厂商标签 = 切换当前使用的 API
-    saveSettingsStore();
+    STORE.saveSettings(settings);
     renderApiTabs();
     renderApiEditor();
     if (window.JGChat && window.JGChat.updateModelUI) window.JGChat.updateModelUI();
@@ -1115,7 +1083,7 @@
       const api = settings.apis[editProvider];
       api.models.push({ id: uid(), model: '', label: '', context: 128, maxOut: 4095 });
       api.currentModelId = api.currentModelId || api.models[api.models.length - 1].id;
-      saveSettingsStore();
+      STORE.saveSettings(settings);
       renderModelRows();
     });
     $('btn-save-model').addEventListener('click', async () => {
@@ -1124,7 +1092,7 @@
       persistEditorToApi(editProvider);
       const api = settings.apis[editProvider];
       if (!api.baseUrl) { toast('请填写接口地址'); return; }
-      saveSettingsStore();
+      STORE.saveSettings(settings);
       await commitPlay(btn);
       toast('「' + apiName(editProvider) + '」设置已保存 ✓');
     });
@@ -1181,7 +1149,7 @@
   // ---------- 启动 ----------
   document.addEventListener('DOMContentLoaded', () => {
     const mig = ensureLedgers();
-    migrateModelSettings();
+    STORE.migrateModelSettings(settings);
     activeId = localStorage.getItem(LS_ACTIVE);
     if (!ledgers.find(l => l.id === activeId)) activeId = ledgers[0].id;
     records = loadLedRecords(activeId);
@@ -1235,7 +1203,7 @@
         if (!api || !api.models.length) return false;
         settings.activeApi = provider;
         api.currentModelId = modelId;
-        saveSettingsStore();
+        STORE.saveSettings(settings);
         return true;
       },
     },
