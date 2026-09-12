@@ -29,11 +29,8 @@
   let sessionId = null;       // 当前会话 id
   let summarizeBusy = false;  // 滚动摘要后台压缩中
 
-  // ---------- 工具 ----------
-  function $(id) { return document.getElementById(id); }
-  function esc(s) {
-    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  }
+  // ---------- 工具（公共版在 js/utils.js） ----------
+  const { $, esc, uid, wait, toast, REDUCED } = window.UTIL;
   // 极简 Markdown 渲染（先转义再解析，流式半截语法只是短暂原样显示）
   function renderMarkdown(md) {
     const lines = esc(md).split(/\r?\n/);
@@ -65,15 +62,8 @@
     closeList();
     return out.join('\n');
   }
-  function toast(msg) { if (window.JG) window.JG.toast(msg); }
 
   // ---------- 会话存取（每账本多会话；会话对象自带 messages，删会话即删数据，无孤儿键） ----------
-  function uid() {
-    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
-    const buf = new Uint8Array(12);
-    crypto.getRandomValues(buf);
-    return 's-' + Array.from(buf).map(b => b.toString(16).padStart(2, '0')).join('');
-  }
   const sessKey = () => 'jigong_sessions_' + storeLedgerId;
   const legacyChatKey = () => 'jigong_chat_' + storeLedgerId;
   const actKey = () => 'jigong_active_session_' + storeLedgerId;
