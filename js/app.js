@@ -121,7 +121,7 @@
   }
 
   // ---------- 侧边栏导航 ----------
-  const PAGE_TITLES = { table: '记录表', charts: '数据图表', ai: 'AI 军师', settings: '设置' };
+  const PAGE_TITLES = { table: '账本', charts: '数据图表', ai: 'AI 军师', settings: '设置' };
   const GREETINGS = {
     table: '账目分明，心中自有乾坤 📜',
     charts: '观工钱之势，谋进退之度 🌙',
@@ -150,6 +150,7 @@
     window.scrollTo(0, 0);
     updateGreeting(name);
     if (name === 'charts' && window.JGCharts) window.JGCharts.render(records);
+    if (name === 'table') syncShelf();
     if (name === 'ai' && window.JGChat && window.JGChat.onShow) window.JGChat.onShow();
     closeDrawer();
   }
@@ -157,6 +158,14 @@
     document.querySelectorAll('#side-nav .side-item').forEach(btn => {
       btn.addEventListener('click', () => switchTab(btn.dataset.tab));
     });
+    // 账本书架：点封面翻开进入该账本；点「＋」新建；工作台里「书架」返回
+    $('bs-grid').addEventListener('click', (e) => {
+      const card = e.target.closest('.bs-card');
+      if (!card) return;
+      if (card.id === 'bs-new') { openLedgerNew(card); return; }
+      openLedgerFromShelf(card);
+    });
+    $('btn-shelf').addEventListener('click', () => { shelfOpen = true; syncShelf(); });
     $('btn-collapse').addEventListener('click', () => {
       const collapsed = document.body.classList.toggle('side-collapsed');
       localStorage.setItem(LS_SIDEBAR, collapsed ? '1' : '0');
@@ -765,7 +774,62 @@
     await commitPlay(btn);
     closeModal();
     switchLedger(led.id, { silent: true });
+    if (shelfOpen) renderBookshelf();   // 书架模式下新账本立刻上架
     toast('账本「' + name + '」已创建 ✓');
+  }
+
+  // ---------- 账本书架（展览模式：封面墙，点封面翻开进入该账本的记录表） ----------
+  let shelfOpen = true;   // 会话级：账本页当前显示书架还是工作台（首次进入先看书架）
+  function renderBookshelf() {
+    const grid = $('bs-grid');
+    if (!grid) return;
+    grid.innerHTML = ledgers.map(l => {
+      const tpl = tplOf(l);
+      const recs = l.id === activeId ? records : loadLedRecords(l.id);
+      const days = recs.length ? TPL().groupByDate(recs) : [];
+      const range = days.length
+        ? days[0].date.slice(5).replace('-', '/') + ' – ' + days[days.length - 1].date.slice(5).replace('-', '/')
+        : '暂无记录';
+      return `<button class="bs-card" data-led="${l.id}" style="--bs-accent:${tpl.accent || '#2e7d74'}">
+        <span class="bs-inner">
+          <span class="bs-spine"></span>
+          <span class="bs-seal" data-icon="${tpl.icon.svg}" data-fallback="${tpl.icon.emoji}"></span>
+          <span class="bs-name">${esc(l.name)}</span>
+          <span class="bs-tpl">${esc(tpl.name)}</span>
+          <span class="bs-meta">${recs.length} 条 · ${range}</span>
+        </span>
+      </button>`;
+    }).join('') +
+      '<button class="bs-card new" id="bs-new" title="新建账本"><span class="bs-inner"><span class="bs-plus">＋</span><span class="bs-newtxt">新建账本</span></span></button>';
+    if (window.JGIcons) window.JGIcons.mount(grid);
+  }
+  function syncShelf(animate) {
+    const shelf = $('bookshelf'), work = $('ledger-workbench');
+    if (!shelf || !work) return;
+    if (shelfOpen) {
+      renderBookshelf();
+      shelf.classList.remove('opening-stage');   // 清掉上次翻开的退场态，否则书架回不来
+      work.classList.add('hidden');
+      shelf.classList.remove('hidden');
+    } else {
+      shelf.classList.add('hidden');
+      work.classList.remove('hidden');
+      if (animate && !REDUCED) {
+        work.classList.remove('page-enter');
+        void work.offsetWidth;
+        work.classList.add('page-enter');
+        setTimeout(() => work.classList.remove('page-enter'), 520);
+      }
+    }
+  }
+  function openLedgerFromShelf(card) {
+    const id = card.dataset.led;
+    if (!id) return;
+    switchLedger(id, { silent: true });
+    if (REDUCED) { shelfOpen = false; syncShelf(); return; }
+    card.classList.add('opening');   // 封面 3D 翻开（动画只作用于轻量封面层）
+    $('bookshelf').classList.add('opening-stage');   // 书架整体退场
+    setTimeout(() => { shelfOpen = false; syncShelf(true); }, 430);
   }
   // ---------- 自定义字段管理器（账本设置弹窗内编辑草稿） ----------
   let cfDraft = [];
@@ -1172,6 +1236,7 @@
     renderLedgerSwitcher();
     updateSegUI();
     syncViewVisibility();
+    syncShelf();   // 首次进入「账本」页先看书架
     renderRecords({ flip: false });
     updateSelectUI();
     if (window.JGCharts) window.JGCharts.render(records);

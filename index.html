@@ -40,13 +40,13 @@
     <div class="ls-menu hidden" id="ls-menu"></div>
   </div>
   <nav class="side-nav" id="side-nav">
-    <button class="side-item active" data-tab="table"><span class="ico" data-icon="nav-table" data-fallback="📋"></span><span class="txt">记录表</span></button>
+    <button class="side-item active" data-tab="table"><span class="ico" data-icon="nav-table" data-fallback="📋"></span><span class="txt">账本</span></button>
     <button class="side-item" data-tab="charts"><span class="ico" data-icon="nav-chart" data-fallback="📈"></span><span class="txt">图表</span></button>
     <button class="side-item" data-tab="ai"><span class="ico" data-icon="nav-ai" data-fallback="🎴"></span><span class="txt">AI 军师</span></button>
     <button class="side-item" data-tab="settings"><span class="ico" data-icon="nav-settings" data-fallback="⚙️"></span><span class="txt">设置</span></button>
   </nav>
   <div class="side-foot">
-    <span class="txt">V0.12.0 · 引用溯源</span>
+    <span class="txt">V0.13.0 · 账本书架</span>
     <button class="side-collapse" id="btn-collapse" title="收起/展开侧边栏"><span data-icon="ui-collapse" data-fallback="⟨"></span></button>
   </div>
 </aside>
@@ -56,7 +56,7 @@
 <div class="main-wrap">
   <header class="topbar">
     <button class="menu-btn" id="btn-menu" title="打开导航"><span data-icon="ui-menu" data-fallback="☰"></span></button>
-    <h1 id="page-title">记录表</h1>
+    <h1 id="page-title">账本</h1>
     <span class="greeting" id="greeting">账目分明，心中自有乾坤 📜</span>
   </header>
 
@@ -64,7 +64,17 @@
 
     <!-- ================= 记录表（合并：操作条 + 明细 + 汇总） ================= -->
     <section id="tab-table" class="panel active">
+      <!-- 账本书架（展览模式：一本本账本立着，点封面翻开进入记录表） -->
+      <div id="bookshelf" class="bookshelf">
+        <div class="bs-head">
+          <h2>账本书架</h2>
+        </div>
+        <div class="bs-grid" id="bs-grid"><!-- 封面卡由 app.js 按账本动态渲染 --></div>
+      </div>
+      <!-- 账本工作台（翻开后在此记录账） -->
+      <div id="ledger-workbench" class="hidden">
       <div class="action-bar">
+        <button id="btn-shelf" class="btn" title="返回账本书架"><span class="bi" data-icon="ui-collapse" data-fallback="◀"></span>书架</button>
         <button id="btn-add" class="btn primary"><span class="bi" data-icon="action-record" data-fallback="✒️"></span>记录</button>
         <button id="btn-import" class="btn"><span class="bi" data-icon="action-import" data-fallback="⬇"></span>导入账单</button>
         <button id="btn-export" class="btn"><span class="bi" data-icon="action-export" data-fallback="⬆"></span>导出账单</button>
@@ -94,6 +104,7 @@
       </div>
 
       <div class="summary-cards" id="summary-cards"></div>
+      </div><!-- /ledger-workbench -->
     </section>
 
     <!-- ================= 图表 ================= -->
