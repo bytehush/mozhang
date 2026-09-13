@@ -260,7 +260,8 @@ main { max-width: 920px; margin: 0 auto; padding: var(--sp-2) var(--sp-2) var(--
    动画只作用于轻量封面层（3D rotateY），工作台仅淡入浮现——性能稳 */
 .bookshelf { padding: 6px 4px 14px; animation: shelfIn .35s ease both; }
 @keyframes shelfIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-.bookshelf.opening-stage { opacity: 0; transform: scale(.97); transition: opacity .3s ease, transform .3s ease; pointer-events: none; }
+/* 翻开/返回的转场编排由 libs/gsap.min.js 的 timeline 驱动（段段重叠、方向统一向前），
+   CSS 侧不再挂同类动画；「减少动效」用户由 JS 直切 */
 .bs-head { margin-bottom: 14px; }
 .bs-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(152px, 1fr));
@@ -270,8 +271,10 @@ main { max-width: 920px; margin: 0 auto; padding: var(--sp-2) var(--sp-2) var(--
   position: relative; aspect-ratio: 3 / 4.1;
   border: 0; background: none; padding: 0; cursor: pointer;
   perspective: 1100px; text-align: center;
+  transition: transform .3s var(--spring);   /* hover 上浮在外层；.bs-inner 的 transform 归 GSAP 转场管 */
 }
-.bs-card.opening { z-index: 6; }
+.bs-card:hover { transform: translateY(-6px); }
+.bs-card:focus-visible { transform: translateY(-6px); }
 .bs-inner {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
@@ -281,13 +284,12 @@ main { max-width: 920px; margin: 0 auto; padding: var(--sp-2) var(--sp-2) var(--
   box-shadow: 0 10px 22px rgba(22, 36, 31, .13);
   clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
   transform-origin: left center;
-  transition: transform .45s var(--spring), box-shadow .3s ease;
+  /* 注意：transform 的过渡与动画全部交给 GSAP 转场编排，这里只做阴影 */
+  transition: box-shadow .3s ease;
 }
 .bs-card:hover .bs-inner, .bs-card:focus-visible .bs-inner {
-  transform: translateY(-6px);
   box-shadow: 0 18px 34px rgba(22, 36, 31, .2);
 }
-.bs-card.opening .bs-inner { transform: rotateY(-148deg); box-shadow: 0 6px 16px rgba(22, 36, 31, .12); }
 .bs-spine {
   position: absolute; left: 0; top: 0; bottom: 0; width: 11px;
   background: var(--bs-accent, #2e7d74); opacity: .9;
@@ -315,9 +317,6 @@ main { max-width: 920px; margin: 0 auto; padding: var(--sp-2) var(--sp-2) var(--
 }
 .bs-plus { font-size: 30px; color: var(--teal); line-height: 1; }
 .bs-newtxt { font-size: 12.5px; color: var(--muted); letter-spacing: .15em; }
-/* 翻开后工作台浮现 */
-#ledger-workbench.page-enter { animation: workEnter .48s var(--spring) both; }
-@keyframes workEnter { from { opacity: 0; transform: translateY(14px) scale(.985); } to { opacity: 1; transform: none; } }
 
 /* ---------- 操作条（记录/导入/导出，紧凑） ---------- */
 .action-bar {

@@ -11,6 +11,7 @@
 
 - 原生 HTML/CSS/JS（IIFE 模块，无打包器）
 - Chart.js 已下载在 `libs/`（本地引用）
+- GSAP 3.12 已下载在 `libs/`（本地引用，仅用于书架转场编排；勿用 npm/CDN 在线引入）
 - Node 内置 http 的本地服务器（`server.js`，端口 8787 被占自动+1）
 - 数据全存 localStorage；AI 走 `/api/ai` 本地代理（支持流式，带 SSRF 防护）
 

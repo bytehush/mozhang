@@ -165,7 +165,7 @@
       if (card.id === 'bs-new') { openLedgerNew(card); return; }
       openLedgerFromShelf(card);
     });
-    $('btn-shelf').addEventListener('click', () => { shelfOpen = true; syncShelf(); });
+    $('btn-shelf').addEventListener('click', backToShelf);
     $('btn-collapse').addEventListener('click', () => {
       const collapsed = document.body.classList.toggle('side-collapsed');
       localStorage.setItem(LS_SIDEBAR, collapsed ? '1' : '0');
@@ -803,7 +803,7 @@
       '<button class="bs-card new" id="bs-new" title="新建账本"><span class="bs-inner"><span class="bs-plus">＋</span><span class="bs-newtxt">新建账本</span></span></button>';
     if (window.JGIcons) window.JGIcons.mount(grid);
   }
-  function syncShelf(animate) {
+  function syncShelf() {
     const shelf = $('bookshelf'), work = $('ledger-workbench');
     if (!shelf || !work) return;
     if (shelfOpen) {
@@ -814,22 +814,58 @@
     } else {
       shelf.classList.add('hidden');
       work.classList.remove('hidden');
-      if (animate && !REDUCED) {
-        work.classList.remove('page-enter');
-        void work.offsetWidth;
-        work.classList.add('page-enter');
-        setTimeout(() => work.classList.remove('page-enter'), 520);
-      }
     }
   }
   function openLedgerFromShelf(card) {
     const id = card.dataset.led;
     if (!id) return;
     switchLedger(id, { silent: true });
-    if (REDUCED) { shelfOpen = false; syncShelf(); return; }
-    card.classList.add('opening');   // 封面 3D 翻开（动画只作用于轻量封面层）
-    $('bookshelf').classList.add('opening-stage');   // 书架整体退场
-    setTimeout(() => { shelfOpen = false; syncShelf(true); }, 430);
+    if (REDUCED || !window.gsap) { shelfOpen = false; syncShelf(); return; }
+    // GSAP 转场编排（剪辑式 match cut：全程"向前推近"一个运动方向，段段重叠无硬切）：
+    // 封面掀到 76°（不过 90°，避免看到空背面）→ 邻卡先散 → 镜头推近书架 → 工作台从推近中浮现
+    const shelf = $('bookshelf');
+    const work = $('ledger-workbench');
+    const inner = card.querySelector('.bs-inner');
+    const others = Array.from(card.parentElement.children).filter(el => el !== card);
+    shelf.style.pointerEvents = 'none';
+    const tl = gsap.timeline({
+      onComplete: () => {
+        shelf.classList.add('hidden');
+        shelf.style.pointerEvents = '';
+        gsap.set([shelf, inner, ...others], { clearProps: 'all' });
+      },
+    });
+    tl.to(inner, { rotationY: 76, scale: 1.04, duration: 0.36, ease: 'power2.in', transformOrigin: 'left center' }, 0)
+      .to(others, { opacity: 0, scale: 0.94, duration: 0.3, ease: 'power1.out' }, 0.1)
+      .to(shelf, { opacity: 0, scale: 1.07, duration: 0.32, ease: 'power2.in' }, 0.28)
+      .add(() => {
+        shelfOpen = false;
+        shelf.classList.add('hidden');
+        work.classList.remove('hidden');
+        gsap.set(work, { opacity: 0, scale: 0.965, y: 12 });
+      }, 0.58)
+      .to(work, { opacity: 1, scale: 1, y: 0, duration: 0.45, ease: 'power3.out' }, 0.6);
+  }
+  // 返回书架：反向转场（工作台拉远淡出 → 书架推近归位）
+  function backToShelf() {
+    shelfOpen = true;
+    const shelf = $('bookshelf'), work = $('ledger-workbench');
+    if (REDUCED || !window.gsap) { syncShelf(); return; }
+    const tl = gsap.timeline({
+      onComplete: () => {
+        work.classList.add('hidden');
+        gsap.set(work, { clearProps: 'all' });
+        gsap.set(shelf, { clearProps: 'all' });
+      },
+    });
+    tl.to(work, { opacity: 0, scale: 1.03, duration: 0.24, ease: 'power1.in' }, 0)
+      .add(() => {
+        renderBookshelf();
+        work.classList.add('hidden');
+        shelf.classList.remove('hidden', 'opening-stage');
+        gsap.set(shelf, { opacity: 0, scale: 1.05 });
+      }, 0.24)
+      .to(shelf, { opacity: 1, scale: 1, duration: 0.4, ease: 'power2.out' }, 0.26);
   }
   // ---------- 自定义字段管理器（账本设置弹窗内编辑草稿） ----------
   let cfDraft = [];
