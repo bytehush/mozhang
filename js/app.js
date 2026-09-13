@@ -842,18 +842,19 @@
       },
     });
     shelfTl = tl;
-    // 翻开与放大同步进行：封面一边向外掀开、一边扑面放大——同一时长、同一起点的复合运动
+    // 翻开与放大同步进行：同一条 tween、同一时长（0.85s）——封面边掀开边扑面放大
+    // 转场总时长 1.26s，与「返回」严格等长（两条转场时间长度一致）
     tl.to(inner, { rotationY: -78, scale: blowScale, duration: 0.85, ease: 'power2.in' }, 0)
       .to(others, { opacity: 0, scale: 0.94, duration: 0.35, ease: 'expo.out' }, 0.12)
       .to(shelf, { opacity: 0, duration: 0.3, ease: 'power2.in' }, 0.55)
-      .to(inner, { opacity: 0, duration: 0.2, ease: 'power1.in' }, 0.72)
+      .to(inner, { opacity: 0, duration: 0.18, ease: 'power1.in' }, 0.72)
       .add(() => {
         shelfOpen = false;
         shelf.classList.add('hidden');
         work.classList.remove('hidden');
         gsap.set(work, { opacity: 0, scale: 1.02 });
-      }, 0.9)
-      .to(work, { opacity: 1, scale: 1, duration: 0.45, ease: 'back.out(1.15)' }, 0.92);
+      }, 0.86)
+      .to(work, { opacity: 1, scale: 1, duration: 0.38, ease: 'back.out(1.15)' }, 0.88);
   }
   // 返回书架：反向容器变换——工作台淡出，封面从铺满缩回书架归位（越缩越慢落定）
   function backToShelf() {
@@ -881,7 +882,8 @@
       const r = card.getBoundingClientRect();
       return Math.max(window.innerWidth / r.width, window.innerHeight / r.height) * 1.15;
     };
-    tl.to(work, { opacity: 0, duration: 0.22, ease: 'power1.in' }, 0)
+    // 与「翻开」严格互为镜像：总时长同为 1.26s，主运动（缩回+转回）同为 0.85s
+    tl.to(work, { opacity: 0, duration: 0.3, ease: 'power2.in' }, 0)
       .add(() => {
         work.classList.add('hidden');
         shelf.classList.remove('hidden', 'opening-stage');
@@ -890,9 +892,9 @@
           gsap.set(inner, { scale: blowScale(), rotationY: -78, opacity: 1 });   // 起点=翻开+放大的终点姿态
         }
         gsap.set(others, { opacity: 0 });
-      }, 0.22)
-      .to(inner || {}, { scale: 1, rotationY: 0, duration: 0.55, ease: 'power3.out' }, 0.26)   // 越缩越慢，落定归位
-      .to(others, { opacity: 1, duration: 0.35, ease: 'power1.out' }, 0.32);
+      }, 0.3)
+      .to(inner || {}, { scale: 1, rotationY: 0, duration: 0.85, ease: 'power2.out' }, 0.41)   // 缩回+转回（0.85s，与翻开等长）
+      .to(others, { opacity: 1, duration: 0.4, ease: 'power1.out' }, 0.6);
   }
   // ---------- 自定义字段管理器（账本设置弹窗内编辑草稿） ----------
   let cfDraft = [];
