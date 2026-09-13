@@ -835,7 +835,7 @@
         gsap.set([shelf, inner, ...others], { clearProps: 'all' });
       },
     });
-    tl.to(inner, { rotationY: 76, scale: 1.04, duration: 0.36, ease: 'power2.in', transformOrigin: 'left center' }, 0)
+    tl.to(inner, { rotationY: -76, scale: 1.04, duration: 0.36, ease: 'power2.in', transformOrigin: 'left center' }, 0)
       .to(others, { opacity: 0, scale: 0.94, duration: 0.3, ease: 'power1.out' }, 0.1)
       .to(shelf, { opacity: 0, scale: 1.07, duration: 0.32, ease: 'power2.in' }, 0.28)
       .add(() => {
