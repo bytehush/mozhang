@@ -32,6 +32,8 @@
   let sessions = [];          // 当前账本的会话列表
   let sessionId = null;       // 当前会话 id
   let summarizeBusy = false;  // 滚动摘要后台压缩中
+  let thinkStart = 0;         // 本轮思考开始时刻（思考行显示"思考 · N 秒"用）
+  let tlEl = null;            // 回合时间线（右侧锚点列）
 
   // ---------- 工具（公共版在 js/utils.js） ----------
   const { $, esc, uid, wait, toast, REDUCED } = window.UTIL;
@@ -116,8 +118,10 @@
         <div class="cm-avatar" data-icon="nav-ai" data-fallback="🎴"></div>
         <span class="cm-name">AI 军师</span>
       </div>
-      <div class="cm-tools hidden"></div>
-      <div class="cm-bubble"></div>`;
+      <div class="cm-body">
+        <div class="cm-acts hidden"></div>
+        <div class="cm-bubble"></div>
+      </div>`;
     if (window.JGIcons) window.JGIcons.mount(wrap);
     return wrap;
   }
@@ -128,8 +132,8 @@
     else {
       el = aiBubble();
       el.querySelector('.cm-bubble').innerHTML = renderMarkdown(content);
-      // 历史消息里的工具调用卡片（Agent 查询记录，点击展开当时查到的结果）
-      if (toolCalls && toolCalls.length) fillToolChips(el.querySelector('.cm-tools'), toolCalls);
+      // 历史消息里的工具行（Agent 查询记录，点击展开当时查到的结果）
+      if (toolCalls && toolCalls.length) fillToolChips(el.querySelector('.cm-acts'), toolCalls);
       // 操作行：复制 + 数据快照 + 数字核对徽章（透明化：让用户看到 AI 的依据）
       const actions = document.createElement('div');
       actions.className = 'cm-actions';
@@ -146,9 +150,7 @@
         dataBtn.textContent = '📦 引用数据';
         const view = document.createElement('div');
         view.className = 'cm-snap hidden';
-        view.innerHTML = '<div class="cs-label">' + (snap.tool
-          ? '本次 AI 通过工具查到的真实数据（AI 只能看到以下内容）：'
-          : '本次真实发给模型的数据（AI 只能看到以下内容）：') + '</div><pre>' +
+        view.innerHTML = '<div class="cs-label">' + (snap.tool ? 'AI 实际查到的数据：' : '本次真实发给模型的数据：') + '</div><pre>' +
           esc(snap.text) + '</pre>';
         dataBtn.addEventListener('click', () => {
           view.classList.toggle('hidden');
@@ -161,8 +163,8 @@
           const badge = document.createElement('div');
           badge.className = 'cm-check ' + (g.miss ? 'warn' : 'ok');
           badge.textContent = g.miss
-            ? `△ 数字核对：${g.refs} 个引用中 ${g.miss} 个未在${snap.tool ? '查询结果' : '快照'}中（多为推算或序号，请留意）`
-            : `✓ 数字核对：回答中 ${g.refs} 个数字均来自${snap.tool ? '工具查询结果' : '账本数据快照'}`;
+            ? `△ ${g.miss} 个数字未见出处，请留意`
+            : `✓ ${g.refs} 个数字均有出处`;
           actions.appendChild(badge);
         }
       }
@@ -201,29 +203,90 @@
   function onScroll() {
     stick = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight < 48;
     updateJump();
+    updateTimelineCur();
   }
   function updateJump() {
     jumpBtn.classList.toggle('show', !stick && listEl.children.length > 0);
   }
 
-  // 思考型模型的思考过程：在思考气泡里实时展示（用户能看见 AI 在想什么）
-  function showReasoning(bubble, delta) {
-    let box = bubble.querySelector('.cm-reasoning');
-    if (!box) {
-      bubble.innerHTML = '<div class="cm-reasoning"><div class="cr-label">💭 思考中</div><div class="cr-text"></div></div><div class="th-row"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>';
-      box = bubble.querySelector('.cm-reasoning');
+  // ---------- 回合时间线：右侧锚点列，一个 AI 回合一个刻度，点击快速锚定 ----------
+  function renderTimeline() {
+    if (!tlEl) return;
+    const turns = Array.from(listEl.querySelectorAll('.chat-msg.ai'));
+    const H = scrollEl.scrollHeight;
+    // 页面未激活（display:none）时高度为 0：先临时显形再量，量完按需收回
+    const wasHidden = tlEl.classList.contains('hidden');
+    if (wasHidden) tlEl.classList.remove('hidden');
+    const vh = tlEl.clientHeight;
+    if (!turns.length || H < 60 || vh < 60) {
+      tlEl.innerHTML = '';
+      tlEl.classList.add('hidden');
+      return;
     }
-    const txt = box.querySelector('.cr-text');
+    tlEl.innerHTML = turns.map((m, i) => {
+      const ratio = Math.min(0.98, Math.max(0.02, (m.offsetTop + 10) / H));
+      const tip = esc((m.dataset.q || '（本回合）').slice(0, 16));
+      return `<button class="tl-dot" data-i="${i}" style="top:${(ratio * vh).toFixed(1)}px" aria-label="第${i + 1}回合"><span class="tl-tip">${tip}</span></button>`;
+    }).join('');
+    tlEl.querySelectorAll('.tl-dot').forEach(d => {
+      d.addEventListener('click', () => {
+        const m = turns[+d.dataset.i];
+        if (!m) return;
+        stick = false;
+        scrollEl.scrollTo({ top: Math.max(0, m.offsetTop - 10), behavior: REDUCED ? 'auto' : 'smooth' });
+      });
+    });
+    updateTimelineCur();
+  }
+  function updateTimelineCur() {
+    if (!tlEl || !tlEl.children.length) return;
+    const turns = listEl.querySelectorAll('.chat-msg.ai');
+    let cur = -1;
+    turns.forEach((m, i) => { if (m.offsetTop - 10 <= scrollEl.scrollTop + 60) cur = i; });
+    tlEl.querySelectorAll('.tl-dot').forEach((d, i) => d.classList.toggle('cur', i === cur));
+  }
+
+  // 思考行：过程与回答同列展示（ZCode 式一行小字），完成后收成「思考 · N 秒」可展开
+  function thinkLine(acts, label) {
+    let line = acts.querySelector('.act-line.think');
+    if (!line) {
+      acts.classList.remove('hidden');
+      line = document.createElement('button');
+      line.type = 'button';
+      line.className = 'act-line think';
+      line.innerHTML = '<span class="al-ico">💭</span><span class="al-verb"></span>' +
+        '<span class="al-state"></span><div class="al-panel hidden"><div class="think-text"></div></div>';
+      line.addEventListener('click', (e) => {
+        if (e.target.closest('.think-text')) return;
+        line.querySelector('.al-panel').classList.toggle('hidden');
+      });
+      acts.appendChild(line);
+    }
+    if (label != null) line.querySelector('.al-verb').textContent = label;
+    return line;
+  }
+  // 思考型模型的思考过程：实时进思考行的展开区（限长）
+  function showReasoning(line, delta) {
+    const txt = line.querySelector('.think-text');
     txt.textContent += delta;
     if (txt.textContent.length > 3000) txt.textContent = txt.textContent.slice(-3000);
     txt.scrollTop = txt.scrollHeight;
+    line.classList.add('open-text');
   }
-  function clearReasoning(bubble) {
-    const box = bubble.querySelector('.cm-reasoning');
-    if (box) box.remove();
+  function finishThink(line, acts) {
+    if (!line) return;
+    const secs = Math.max(1, Math.round((Date.now() - thinkStart) / 1000));
+    const hasText = !!line.querySelector('.think-text').textContent;
+    line.classList.remove('pending');
+    line.querySelector('.al-verb').textContent = '思考';
+    line.querySelector('.al-state').textContent = '· ' + secs + ' 秒';
+    const panel = line.querySelector('.al-panel');
+    if (!hasText) panel.classList.add('hidden');
+    // 纯寒暄且没有思考内容：不留过程行，回答即全部
+    if (!acts.querySelector('.act-line.tool') && !hasText) acts.classList.add('hidden');
   }
 
-  // ---------- 工具调用卡片（ZCode 式内联展示：查了什么、查到了什么，点击展开） ----------
+  // ---------- 过程行（ZCode 式：一行一个动作，弱化灰调，点击展开详情） ----------
   const TOOL_LABELS = {
     list_ledgers: '查询账本清单',
     get_stats: '查询账本统计',
@@ -231,38 +294,35 @@
     get_day_records: '查询某日记录',
   };
   const cap = (s, n) => { s = String(s == null ? '' : s); return s.length > n ? s.slice(0, n) + '…（已截断）' : s; };
-  // 追加一张处于"查询中"状态的卡片；done() 后变为完成态并可展开结果
-  function addToolChip(toolsBox, label, argsText) {
-    toolsBox.classList.remove('hidden');
+  // 追加一行处于"查询中"状态的工具行；done() 后落成完成态，点击可展开真实结果
+  function addToolChip(acts, label, argsText) {
+    acts.classList.remove('hidden');
     const item = document.createElement('div');
-    item.className = 'cm-tool pending';
-    const head = document.createElement('button');
-    head.type = 'button';
-    head.className = 'cm-tool-head';
-    head.innerHTML = '<span class="ct-ico">🔧</span><span class="ct-name">' + esc(label) + '</span>' +
-      (argsText ? '<span class="ct-arg">· ' + esc(argsText) + '</span>' : '') +
-      '<span class="ct-state">…</span>';
-    const result = document.createElement('div');
-    result.className = 'cm-tool-result hidden';
-    head.addEventListener('click', () => result.classList.toggle('hidden'));
-    item.appendChild(head);
-    item.appendChild(result);
-    toolsBox.appendChild(item);
+    item.className = 'act-line tool pending';
+    item.innerHTML = '<span class="al-ico">🔧</span><span class="al-verb">' + esc(label) + '</span>' +
+      (argsText ? '<span class="al-arg">· ' + esc(argsText) + '</span>' : '') +
+      '<span class="al-state"></span>';
+    const panel = document.createElement('div');
+    panel.className = 'al-panel hidden';
+    panel.innerHTML = '<pre></pre>';
+    item.addEventListener('click', () => panel.classList.toggle('hidden'));
+    acts.appendChild(item);
+    acts.appendChild(panel);
     follow();
     return {
       done(ok, resultText) {
         item.classList.remove('pending');
         if (!ok) item.classList.add('err');
-        item.querySelector('.ct-state').textContent = ok ? '✓' : '✗';
-        result.innerHTML = '<pre>' + esc(resultText || '') + '</pre>';
+        item.querySelector('.al-state').textContent = ok ? '✓' : '✗';
+        panel.querySelector('pre').textContent = resultText || '';
         follow();
       },
     };
   }
-  // 历史消息里的工具卡片：直接落成完成态
-  function fillToolChips(toolsBox, toolCalls) {
+  // 历史消息里的工具行：直接落成完成态
+  function fillToolChips(acts, toolCalls) {
     (toolCalls || []).forEach(t =>
-      addToolChip(toolsBox, t.label || TOOL_LABELS[t.name] || t.name, t.argsText).done(t.ok !== false, t.resultText || '（无记录）'));
+      addToolChip(acts, t.label || TOOL_LABELS[t.name] || t.name, t.argsText).done(t.ok !== false, t.resultText || '（无记录）'));
   }
 
   // ---------- 平滑打字机（节奏缓冲器） ----------
@@ -451,12 +511,13 @@
     stopBtn.classList.remove('hidden');
     appendMsg('user', text);
 
-    // 思考中气泡（首字到达时原位变成流式回答）
+    // 思考行（过程与回答同列：ZCode 式一行小字，完成后收成「思考 · N 秒」）
     const el = aiBubble();
+    el.dataset.q = text.slice(0, 60);   // 回合标记：时间线悬停提示
     const bubble = el.querySelector('.cm-bubble');
-    const toolsBox = el.querySelector('.cm-tools');
-    bubble.classList.add('thinking');
-    bubble.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="th-text">军师推演中…</span>';
+    const acts = el.querySelector('.cm-acts');
+    thinkStart = Date.now();
+    let thinkLineRef = thinkLine(acts, '思考中');
     emptyEl.classList.add('hidden');
     listEl.appendChild(el);
     stick = true; follow(); updateJump();
@@ -495,10 +556,6 @@
     const giveUp = () => { if (controller) controller.abort(); };   // abort → catch 统一收尾
     const armWatch = () => { clearWatch(); watchdog = setTimeout(giveUp, window.JGChat_FIRST_TOKEN_MS || 15000); };
     const clearWatch = () => { if (watchdog) { clearTimeout(watchdog); watchdog = null; } };
-    const think = txt => {
-      bubble.classList.add('thinking');
-      bubble.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="th-text">' + esc(txt) + '</span>';
-    };
 
     try {
       if (!api.apiKey) throw new Error('当前厂商「' + api.name + '」还没有填写 API Key。请到「设置 → 模型设置」填写。');
@@ -514,9 +571,16 @@
         }), controller, (delta, type) => {
           if (!active || active.typer !== typer) return;   // 已被终结，丢弃迟到的数据
           clearWatch();
-          if (type === 'reasoning') { showReasoning(bubble, delta); return; }
-          if (type === 'tool') { if (gotAny) return; think('正在查询账本数据…'); return; }
-          if (!gotAny) { gotAny = true; bubble.classList.remove('thinking'); clearReasoning(bubble); }
+          if (type === 'reasoning') { if (thinkLineRef) showReasoning(thinkLineRef, delta); return; }
+          if (type === 'tool') {
+            if (thinkLineRef) thinkLineRef.querySelector('.al-verb').textContent = '推演';
+            return;
+          }
+          if (!gotAny) {
+            gotAny = true;
+            finishThink(thinkLineRef, acts);   // 首字到达：思考行收成「思考 · N 秒」
+            thinkLineRef = null;
+          }
           typer.push(delta);
         });
         if (!res.toolCalls.length) break;   // 无工具调用：最终回答已流式吐完
@@ -527,7 +591,7 @@
           try { args = JSON.parse(rc.function.arguments || '{}'); } catch { /* 参数坏就按空处理，让模型自行纠正 */ }
           const label = TOOL_LABELS[rc.function.name] || rc.function.name;
           const argsText = Object.values(args).filter(v => v != null && v !== '').map(String).join(' · ');
-          const chip = addToolChip(toolsBox, label, argsText);
+          const chip = addToolChip(acts, label, argsText);
           let result, ok = true;
           try {
             if (!window.AITOOLS || typeof window.AITOOLS.run !== 'function') throw new Error('工具层未加载');
@@ -542,7 +606,8 @@
             content: resultText.slice(0, 12000),
           });
         }
-        think('查询完成，继续推演…');
+        thinkStart = Date.now();
+        thinkLineRef = thinkLine(acts, '继续推演');
         gotAny = false;
       }
       clearWatch();
@@ -564,20 +629,25 @@
           throw new Error('这个模型似乎不支持工具调用，请到「设置 → 模型设置」换一个支持工具的模型（如 glm-4-flash、deepseek-chat）。');
         }
         if (!m2.content) throw new Error('AI 没有返回内容，请稍后重试。');
-        bubble.classList.remove('thinking');
+        if (!gotAny) { finishThink(thinkLineRef, acts); thinkLineRef = null; }
         typer.push(m2.content);
       }
       typer.finish();
     } catch (err) {
       clearWatch();
       if (!active || active.typer !== typer) return;   // 已被「停止」终结，忽略迟到错误
+      if (thinkLineRef && thinkLineRef.classList.contains('pending')) {
+        thinkLineRef.classList.remove('pending');
+        thinkLineRef.querySelector('.al-verb').textContent = '思考';
+        thinkLineRef.querySelector('.al-state').textContent = '· 未完成';
+      }
       const partial = typer.stop();
       active = null;
-      bubble.classList.remove('thinking');
       streaming = false;
       stopBtn.classList.add('hidden');
       sendBtn.disabled = false;
       controller = null;
+      renderTimeline();
       const timedOut = err && err.name === 'AbortError' && !userStopped;
       const why = userStopped ? '已停止' : (timedOut ? '等待超时' : (err.message || '已停止'));
       if (partial.trim()) {
@@ -607,7 +677,6 @@
   // 终结一次交换：流式正常完成与手动停止共用，保证按钮/历史状态一致
   // snap = 本次工具查询快照（用于「📦 引用数据」展示与数字核对徽章）；toolLog = 工具调用记录
   function finishExchange(el, bubble, finalText, stopped, snap, toolLog) {
-    bubble.classList.remove('thinking');
     bubble.innerHTML = renderMarkdown(finalText) +
       (stopped ? '<p class="cm-err">（已停止，内容不完整）</p>' : '');
     streaming = false;
@@ -658,8 +727,8 @@
           const badge = document.createElement('div');
           badge.className = 'cm-check ' + (g.miss ? 'warn' : 'ok');
           badge.textContent = g.miss
-            ? `△ 数字核对：${g.refs} 个引用中 ${g.miss} 个未在查询结果中（多为推算或序号，请留意）`
-            : `✓ 数字核对：回答中 ${g.refs} 个数字均来自工具查询结果`;
+            ? `△ ${g.miss} 个数字未见出处，请留意`
+            : `✓ ${g.refs} 个数字均有出处`;
           actions.appendChild(badge);
         }
       } else {
@@ -669,13 +738,14 @@
         if (nums.length >= 3) {
           const badge = document.createElement('div');
           badge.className = 'cm-check warn';
-          badge.textContent = `△ 本回答未查询账本数据，其中 ${nums.length} 个数字没有数据来源（需要准确数字可让 AI 先查账本）`;
+          badge.textContent = `△ 未查账本，数字仅供参考`;
           actions.appendChild(badge);
         }
       }
       el.appendChild(actions);
     }
     stick = true; follow(); updateJump();
+    renderTimeline();
   }
 
   function stopStream() {
@@ -698,7 +768,16 @@
       return;
     }
     emptyEl.classList.add('hidden');
-    msgs.forEach(m => appendMsg(m.role, m.content, { save: false, snap: m.snapshot || null, toolCalls: m.toolCalls || null }));
+    msgs.forEach((m, i) => {
+      const el2 = appendMsg(m.role, m.content, { save: false, snap: m.snapshot || null, toolCalls: m.toolCalls || null });
+      if (m.role === 'ai' || m.role === 'assistant') {
+        // 回合标记：取本轮的用户提问（时间线悬停提示）
+        for (let k = i - 1; k >= 0; k--) {
+          if (msgs[k].role === 'user') { el2.dataset.q = String(msgs[k].content).slice(0, 60); break; }
+        }
+      }
+    });
+    renderTimeline();
     stick = true;
     follow();
     updateJump();
@@ -723,7 +802,7 @@
     if (legacy) localStorage.removeItem(legacyChatKey());
     saveSessionsStore();
     msgs = currentSession().messages;
-    if (inputEl) inputEl.placeholder = `问问 AI 军师…（Enter 发送，可跨账本查询）`;
+    if (inputEl) inputEl.placeholder = `问问你的账…`;
     renderAll();
     updateSessionUI();
     updateModelUI();
@@ -913,8 +992,10 @@
     stopBtn = $('btn-chat-stop');
     emptyEl = $('chat-empty');
     jumpBtn = $('chat-jump');
+    tlEl = $('chat-timeline');
     scrollEl.addEventListener('scroll', onScroll);
     jumpBtn.addEventListener('click', () => { stick = true; follow(); updateJump(); });
+    window.addEventListener('resize', renderTimeline);
 
     $('btn-session').addEventListener('click', (e) => { e.stopPropagation(); toggleSessionMenu(); });
     $('session-menu').addEventListener('click', (e) => e.stopPropagation());
@@ -957,5 +1038,5 @@
   }
 
   document.addEventListener('DOMContentLoaded', init);
-  window.JGChat = { reload };
+  window.JGChat = { reload, onShow: renderTimeline };   // onShow：切到对话页时重算时间线
 })();

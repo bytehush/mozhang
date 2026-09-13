@@ -46,7 +46,7 @@
     <button class="side-item" data-tab="settings"><span class="ico" data-icon="nav-settings" data-fallback="⚙️"></span><span class="txt">设置</span></button>
   </nav>
   <div class="side-foot">
-    <span class="txt">V0.10.0 · Agent 工具</span>
+    <span class="txt">V0.11.0 · 对话流</span>
     <button class="side-collapse" id="btn-collapse" title="收起/展开侧边栏"><span data-icon="ui-collapse" data-fallback="⟨"></span></button>
   </div>
 </aside>
@@ -125,14 +125,13 @@
             </button>
             <div id="session-menu" class="session-menu hidden"></div>
           </div>
-          <button id="btn-chat-clear" class="chat-clear" title="清空当前会话的消息">清空本会话</button>
+          <button id="btn-chat-clear" class="chat-clear" title="清空当前会话的消息">清空</button>
         </div>
         <div class="chat-scroll-wrap">
           <div class="chat-scroll" id="chat-scroll">
             <div class="chat-empty" id="chat-empty">
               <div class="ce-seal" data-icon="nav-ai" data-fallback="🎴"></div>
-              <p class="ce-title">我是 AI 军师，读过你这本账的全部记录</p>
-              <p class="ce-sub">点下面的问题直接开问，或自己在下方输入：</p>
+              <p class="ce-title">这一本账，我已读毕</p>
               <div class="chat-chips" id="chat-chips">
                 <button class="chip" data-q="请为我生成一份完整的数据分析报告，按你的报告结构来。">📋 完整分析报告</button>
                 <button class="chip" data-q="最近一段时间的趋势怎么样？给我讲讲。">📈 最近趋势如何</button>
@@ -142,10 +141,11 @@
             </div>
             <div id="chat-list"></div>
           </div>
+          <div class="chat-timeline hidden" id="chat-timeline"></div>
           <button id="chat-jump" class="chat-jump hidden">↓ 回到底部</button>
         </div>
         <div class="chat-dock">
-          <textarea id="chat-input" rows="1" placeholder="问点什么…（Enter 发送）"></textarea>
+          <textarea id="chat-input" rows="1" placeholder="问问你的账…"></textarea>
           <div class="dock-foot">
             <div class="model-wrap">
               <button id="btn-model" class="model-btn" title="切换模型">
@@ -154,7 +154,7 @@
                 <span class="mb-chev" data-icon="ui-chevron-down" data-fallback="▾"></span>
               </button>
             </div>
-            <span class="dock-hint" id="chat-hint">Enter 发送 / Shift+Enter 换行</span>
+            <span class="dock-hint" id="chat-hint">Enter 发送</span>
             <span class="dock-space"></span>
             <button id="btn-chat-stop" class="btn danger hidden">停止</button>
             <button id="btn-chat-send" class="btn primary">发送</button>

@@ -148,6 +148,7 @@
     window.scrollTo(0, 0);
     updateGreeting(name);
     if (name === 'charts' && window.JGCharts) window.JGCharts.render(records);
+    if (name === 'ai' && window.JGChat && window.JGChat.onShow) window.JGChat.onShow();
     closeDrawer();
   }
   function initNav() {
