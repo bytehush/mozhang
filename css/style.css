@@ -895,14 +895,38 @@ main:has(#tab-ai.active) { padding-bottom: 10px; }
 .chat-msg.ai .cm-bubble li::marker { color: var(--gold); }
 .chat-msg.ai .cm-bubble p { margin: 6px 0; }
 .chat-msg.ai .cm-bubble strong { color: var(--gold-deep); }
-.cm-copy {
-  border: 1px solid var(--line); background: rgba(253, 255, 253, .9);
-  color: var(--muted); font-size: 11.5px; font-family: inherit;
-  padding: 3px 10px; cursor: pointer; margin-left: 34px; align-self: flex-start;
-  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
-  transition: color .2s ease, border-color .2s ease;
+/* 消息操作行：默认完全隐形，悬停整条 AI 消息（或键盘聚焦）时淡入的图标组，
+   与正文左轴线对齐；触屏设备无悬停，常显 */
+.cm-actions {
+  display: flex; align-items: center; gap: 2px;
+  margin-top: 4px; padding-left: 34px;
+  opacity: 0; transition: opacity .25s ease;
 }
-.cm-copy:hover { color: var(--teal); border-color: var(--teal); }
+.chat-msg.ai:hover .cm-actions, .cm-actions:focus-within { opacity: 1; }
+@media (hover: none) { .cm-actions { opacity: 1; } }
+.ia-btn {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  width: 27px; height: 24px; flex: none;
+  border: 0; background: none; cursor: pointer;
+  color: var(--muted); border-radius: 5px;
+  transition: color .2s ease, background-color .2s ease;
+}
+.ia-btn:hover, .ia-btn.on { color: var(--teal); background: rgba(46, 125, 116, .07); }
+.ia-btn span { display: block; width: 15px; height: 15px; }
+.ia-btn svg { width: 15px; height: 15px; }
+/* 纯 CSS 悬停提示（水墨小贴士，零 JS） */
+.ia-btn::after {
+  content: attr(data-tip);
+  position: absolute; left: 0; bottom: calc(100% + 5px);
+  background: rgba(22, 36, 31, .92); color: #ecd9a0;
+  font-size: 11px; font-family: inherit; letter-spacing: .05em;
+  padding: 3px 9px; white-space: nowrap;
+  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+  opacity: 0; pointer-events: none; transform: translateY(3px);
+  transition: opacity .18s ease, transform .18s ease;
+}
+.ia-btn:hover::after { opacity: 1; transform: translateY(0); }
 .cm-err { color: var(--cinnabar); font-size: 13px; }
 /* 回合叙述流（V0.11.0 参照 ZCode）：一个回合 = 头像行 + 过程行(思考/工具) + 正文，
    左缘细线把三者串成一体；过程行低饱和弱化，正文是唯一主角 */
@@ -1178,7 +1202,7 @@ main:has(#tab-ai.active) { padding-bottom: 10px; }
   .chat-msg.ai .cm-body { padding-left: 0; }
   .chat-msg.ai .cm-body::before { display: none; }
   .chat-msg.me .cm-bubble { padding-right: 0; }
-  .cm-copy { margin-left: 0; }
+  .cm-actions { padding-left: 0; }
   .chat-timeline { right: 0; }
   .chat-dock { padding: 8px 10px 6px; }
   .dock-foot .btn { flex: 1; text-align: center; }

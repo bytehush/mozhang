@@ -125,6 +125,48 @@
     if (window.JGIcons) window.JGIcons.mount(wrap);
     return wrap;
   }
+  // ---------- 消息操作行：悬停整条消息才淡入的图标组（与正文左轴线对齐）+ 数字核对徽章 ----------
+  // appendMsg（历史渲染）与 finishExchange（实时收尾）共用，保证两处行为一致
+  function buildMsgActions(el, content, snap) {
+    const actions = document.createElement('div');
+    actions.className = 'cm-actions';
+    const mkBtn = (icon, fallback, tip, fn) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'ia-btn';
+      b.dataset.tip = tip;
+      b.setAttribute('aria-label', tip);
+      b.innerHTML = `<span data-icon="${icon}" data-fallback="${fallback}"></span>`;
+      b.addEventListener('click', fn);
+      return b;
+    };
+    actions.appendChild(mkBtn('ui-copy', '⧉', '复制', () => {
+      navigator.clipboard.writeText(content).then(() => toast('已复制 ✓'), () => toast('复制失败'));
+    }));
+    if (snap) {
+      actions.appendChild(mkBtn('ui-data', '⛁', '引用数据', (e) => {
+        const view = el.querySelector('.cm-snap');
+        view.classList.toggle('hidden');
+        e.currentTarget.classList.toggle('on', !view.classList.contains('hidden'));
+        follow();
+      }));
+      const view = document.createElement('div');
+      view.className = 'cm-snap hidden';
+      view.innerHTML = '<div class="cs-label">' + (snap.tool ? 'AI 实际查到的数据：' : '本次真实发给模型的数据：') + '</div><pre>' +
+        esc(snap.text) + '</pre>';
+      el.appendChild(view);
+      const g = groundingCheck(content, snap.source);
+      if (g) {
+        const badge = document.createElement('div');
+        badge.className = 'cm-check ' + (g.miss ? 'warn' : 'ok');
+        badge.textContent = g.miss ? `△ ${g.miss} 个数字未见出处，请留意` : `✓ ${g.refs} 个数字均有出处`;
+        actions.appendChild(badge);
+      }
+    }
+    el.appendChild(actions);
+    if (window.JGIcons) window.JGIcons.mount(actions);
+    return actions;
+  }
   function appendMsg(role, content, { save = true, snap = null, toolCalls = null } = {}) {
     emptyEl.classList.add('hidden');
     let el;
@@ -134,41 +176,7 @@
       el.querySelector('.cm-bubble').innerHTML = renderMarkdown(content);
       // 历史消息里的工具行（Agent 查询记录，点击展开当时查到的结果）
       if (toolCalls && toolCalls.length) fillToolChips(el.querySelector('.cm-acts'), toolCalls);
-      // 操作行：复制 + 数据快照 + 数字核对徽章（透明化：让用户看到 AI 的依据）
-      const actions = document.createElement('div');
-      actions.className = 'cm-actions';
-      const copy = document.createElement('button');
-      copy.className = 'cm-copy';
-      copy.textContent = '复制';
-      copy.addEventListener('click', () => {
-        navigator.clipboard.writeText(content).then(() => toast('已复制 ✓'), () => toast('复制失败'));
-      });
-      actions.appendChild(copy);
-      if (snap) {
-        const dataBtn = document.createElement('button');
-        dataBtn.className = 'cm-copy';
-        dataBtn.textContent = '📦 引用数据';
-        const view = document.createElement('div');
-        view.className = 'cm-snap hidden';
-        view.innerHTML = '<div class="cs-label">' + (snap.tool ? 'AI 实际查到的数据：' : '本次真实发给模型的数据：') + '</div><pre>' +
-          esc(snap.text) + '</pre>';
-        dataBtn.addEventListener('click', () => {
-          view.classList.toggle('hidden');
-          dataBtn.textContent = view.classList.contains('hidden') ? '📦 引用数据' : '📥 收起数据';
-        });
-        actions.appendChild(dataBtn);
-        el.appendChild(view);
-        const g = groundingCheck(content, snap.source);
-        if (g) {
-          const badge = document.createElement('div');
-          badge.className = 'cm-check ' + (g.miss ? 'warn' : 'ok');
-          badge.textContent = g.miss
-            ? `△ ${g.miss} 个数字未见出处，请留意`
-            : `✓ ${g.refs} 个数字均有出处`;
-          actions.appendChild(badge);
-        }
-      }
-      el.appendChild(actions);
+      buildMsgActions(el, content, snap);
     }
     listEl.appendChild(el);
     if (save) {
@@ -696,42 +704,9 @@
       msgs.push(entry);
       saveSessionMsgs();
       maybeSummarize();   // 长对话滚动摘要（后台压缩，不阻塞界面）
-      // 操作行：复制 / 📦 引用数据（展开 AI 实际拿到的数据）/ 数字核对徽章
-      const actions = document.createElement('div');
-      actions.className = 'cm-actions';
-      const copy = document.createElement('button');
-      copy.className = 'cm-copy';
-      copy.textContent = '复制';
-      copy.addEventListener('click', () => {
-        navigator.clipboard.writeText(finalText).then(() => toast('已复制 ✓'), () => toast('复制失败'));
-      });
-      actions.appendChild(copy);
-      if (snap) {
-        const dataBtn = document.createElement('button');
-        dataBtn.className = 'cm-copy';
-        dataBtn.textContent = '📦 引用数据';
-        const view = document.createElement('div');
-        view.className = 'cm-snap hidden';
-        view.innerHTML = '<div class="cs-label">' + (snap.tool
-          ? '本次 AI 通过工具查到的真实数据（AI 只能看到以下内容）：'
-          : '本次真实发给模型的数据（AI 只能看到以下内容）：') + '</div><pre>' +
-          esc(snap.text) + '</pre>';
-        dataBtn.addEventListener('click', () => {
-          view.classList.toggle('hidden');
-          dataBtn.textContent = view.classList.contains('hidden') ? '📦 引用数据' : '📥 收起数据';
-        });
-        actions.appendChild(dataBtn);
-        el.appendChild(view);
-        const g = groundingCheck(finalText, snap.source);
-        if (g) {
-          const badge = document.createElement('div');
-          badge.className = 'cm-check ' + (g.miss ? 'warn' : 'ok');
-          badge.textContent = g.miss
-            ? `△ ${g.miss} 个数字未见出处，请留意`
-            : `✓ ${g.refs} 个数字均有出处`;
-          actions.appendChild(badge);
-        }
-      } else {
+      // 操作行（悬停显现图标组 + 数字核对徽章）
+      const actions = buildMsgActions(el, finalText, snap);
+      if (!snap) {
         // 没查数据的回答若满篇数字：诚实提示"没有数据来源"，不装可靠
         const cleaned = finalText.replace(/\d{4}-\d{1,2}-\d{1,2}/g, ' ').replace(/\b(19|20)\d{2}\b/g, ' ');
         const nums = cleaned.match(/\d+(?:\.\d+)?/g) || [];
@@ -742,7 +717,6 @@
           actions.appendChild(badge);
         }
       }
-      el.appendChild(actions);
     }
     stick = true; follow(); updateJump();
     renderTimeline();
