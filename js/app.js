@@ -1321,8 +1321,11 @@
     locateRecord(ledgerId, recId) {
       const led = ledgers.find(l => l.id === ledgerId);
       if (!led || !STORE.loadLedRecords(ledgerId).some(r => r.id === recId)) return false;
+      if (shelfTl) shelfTl.progress(1);          // 收掉进行中的书架转场，避免内联样式残留
       if (selectMode) exitSelect();
       if (activeId !== ledgerId) switchLedger(ledgerId, { silent: true });
+      // 账本页可能停在书架（工作台隐藏）：必须先"打开账本"，否则目标记录不可见
+      shelfOpen = false;
       switchTab('table');
       const flash = () => {
         setTimeout(() => {   // 等筛选/渲染就绪；不用 rAF（后台标签页 rAF 不触发）
