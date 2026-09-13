@@ -780,6 +780,7 @@
 
   // ---------- 账本书架（展览模式：封面墙，点封面翻开进入该账本的记录表） ----------
   let shelfOpen = true;   // 会话级：账本页当前显示书架还是工作台（首次进入先看书架）
+  let shelfTl = null;     // 进行中的书架转场（翻开/返回互斥：新转场前强制完成旧的）
   function renderBookshelf() {
     const grid = $('bs-grid');
     if (!grid) return;
@@ -821,53 +822,78 @@
     if (!id) return;
     switchLedger(id, { silent: true });
     if (REDUCED || !window.gsap) { shelfOpen = false; syncShelf(); return; }
-    // GSAP 转场编排（剪辑式 match cut：全程"向前推近"一个运动方向，段段重叠无硬切）：
-    // 封面掀到 76°（不过 90°，避免看到空背面）→ 邻卡先散 → 镜头推近书架 → 工作台从推近中浮现
+    if (shelfTl) shelfTl.progress(1);   // 强制完成进行中的转场，避免两条 timeline 并发打架
+    // 容器变换转场：封面掀开 → 扑面放大铺满视口（非线性：越放越快）→ 化作记录表
     const shelf = $('bookshelf');
     const work = $('ledger-workbench');
     const inner = card.querySelector('.bs-inner');
     const others = Array.from(card.parentElement.children).filter(el => el !== card);
+    const rect = card.getBoundingClientRect();
+    const blowScale = Math.max(window.innerWidth / rect.width, window.innerHeight / rect.height) * 1.15;
     shelf.style.pointerEvents = 'none';
+    gsap.set(card, { zIndex: 30 });
     const tl = gsap.timeline({
       onComplete: () => {
         shelf.classList.add('hidden');
         shelf.style.pointerEvents = '';
         gsap.set([shelf, inner, ...others], { clearProps: 'all' });
+        gsap.set(card, { clearProps: 'all' });
+        if (shelfTl === tl) shelfTl = null;
       },
     });
-    // 非线性节奏：预备（轻压）→ 越掀越快 → 邻卡瞬散缓停 → 加速推近 → 过冲回弹落定
+    shelfTl = tl;
     tl.to(inner, { rotationY: 5, scale: 0.985, duration: 0.11, ease: 'power1.in' }, 0)
-      .to(inner, { rotationY: -78, scale: 1.05, duration: 0.42, ease: 'power3.in' }, 0.11)
+      .to(inner, { rotationY: -78, scale: 1.06, duration: 0.36, ease: 'power3.in' }, 0.11)
       .to(others, { opacity: 0, scale: 0.94, duration: 0.32, ease: 'expo.out' }, 0.12)
-      .to(shelf, { opacity: 0, scale: 1.07, duration: 0.3, ease: 'power3.in' }, 0.3)
+      .to(shelf, { opacity: 0, duration: 0.3, ease: 'power2.in' }, 0.5)
+      .to(inner, { scale: blowScale, rotationY: -40, duration: 0.55, ease: 'power3.in' }, 0.5)
+      .to(inner, { opacity: 0, duration: 0.22, ease: 'power1.in' }, 0.82)
       .add(() => {
         shelfOpen = false;
         shelf.classList.add('hidden');
         work.classList.remove('hidden');
-        gsap.set(work, { opacity: 0, scale: 0.965, y: 12 });
-      }, 0.58)
-      .to(work, { opacity: 1, scale: 1, y: 0, duration: 0.5, ease: 'back.out(1.2)' }, 0.6);
+        gsap.set(work, { opacity: 0, scale: 1.02 });
+      }, 1.02)
+      .to(work, { opacity: 1, scale: 1, duration: 0.45, ease: 'back.out(1.15)' }, 1.04);
   }
-  // 返回书架：反向转场（工作台拉远淡出 → 书架推近归位）
+  // 返回书架：反向容器变换——工作台淡出，封面从铺满缩回书架归位（越缩越慢落定）
   function backToShelf() {
     shelfOpen = true;
     const shelf = $('bookshelf'), work = $('ledger-workbench');
     if (REDUCED || !window.gsap) { syncShelf(); return; }
+    if (shelfTl) shelfTl.progress(1);   // 强制完成进行中的转场（如用户在翻开动画中连点返回）
+    renderBookshelf();
     const tl = gsap.timeline({
       onComplete: () => {
         work.classList.add('hidden');
-        gsap.set(work, { clearProps: 'all' });
-        gsap.set(shelf, { clearProps: 'all' });
+        shelf.querySelectorAll('.bs-card').forEach(c => gsap.set(c, { clearProps: 'all' }));
+        shelf.querySelectorAll('.bs-inner').forEach(el => gsap.set(el, { clearProps: 'all' }));
+        gsap.set([work, shelf], { clearProps: 'all' });
+        if (shelfTl === tl) shelfTl = null;
       },
     });
-    tl.to(work, { opacity: 0, scale: 1.03, duration: 0.22, ease: 'power2.in' }, 0)
+    shelfTl = tl;
+    // tween 全部预声明（禁动态 add），目标值用函数式在首次渲染时求值——任何时间跳跃下状态都收敛
+    const activeId = (window.JG.getActiveLedger() || {}).id;
+    const card = shelf.querySelector(`.bs-card[data-led="${activeId}"]`) || shelf.querySelector('.bs-card');
+    const inner = card ? card.querySelector('.bs-inner') : null;
+    const others = card ? Array.from(card.parentElement.children).filter(el => el !== card) : [];
+    const blowScale = () => {
+      const r = card.getBoundingClientRect();
+      return Math.max(window.innerWidth / r.width, window.innerHeight / r.height) * 1.15;
+    };
+    tl.to(work, { opacity: 0, duration: 0.22, ease: 'power1.in' }, 0)
       .add(() => {
-        renderBookshelf();
         work.classList.add('hidden');
         shelf.classList.remove('hidden', 'opening-stage');
-        gsap.set(shelf, { opacity: 0, scale: 1.05 });
-      }, 0.24)
-      .to(shelf, { opacity: 1, scale: 1, duration: 0.48, ease: 'back.out(1.1)' }, 0.26);
+        if (inner) {
+          gsap.set(card, { zIndex: 30 });
+          gsap.set(inner, { scale: blowScale(), rotationY: -40, opacity: 1 });   // 从"铺满视口"起步
+        }
+        gsap.set(others, { opacity: 0 });
+      }, 0.22)
+      .to(inner || {}, { scale: 1, rotationY: 0, duration: 0.55, ease: 'power3.out' }, 0.26)   // 越缩越慢，落定归位
+      .to(others, { opacity: 1, duration: 0.35, ease: 'power1.out' }, 0.32);
   }
   // ---------- 自定义字段管理器（账本设置弹窗内编辑草稿） ----------
   let cfDraft = [];
