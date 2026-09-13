@@ -842,19 +842,20 @@
       },
     });
     shelfTl = tl;
-    tl.to(inner, { rotationY: 5, scale: 0.985, duration: 0.11, ease: 'power1.in' }, 0)
-      .to(inner, { rotationY: -78, scale: 1.06, duration: 0.36, ease: 'power3.in' }, 0.11)
-      .to(others, { opacity: 0, scale: 0.94, duration: 0.32, ease: 'expo.out' }, 0.12)
-      .to(shelf, { opacity: 0, duration: 0.3, ease: 'power2.in' }, 0.5)
-      .to(inner, { scale: blowScale, rotationY: -40, duration: 0.55, ease: 'power3.in' }, 0.5)
-      .to(inner, { opacity: 0, duration: 0.22, ease: 'power1.in' }, 0.82)
+    // 节拍分离：①掀开（先快后缓，一眼看清）→ ②定格一拍（翻开的书悬停）→ ③邻卡散+扑面放大 → ④化作记录表
+    tl.to(inner, { rotationY: 5, scale: 0.985, duration: 0.1, ease: 'power1.in' }, 0)
+      .to(inner, { rotationY: -78, scale: 1.06, duration: 0.34, ease: 'power2.out' }, 0.1)
+      .to(others, { opacity: 0, scale: 0.94, duration: 0.3, ease: 'expo.out' }, 0.62)
+      .to(shelf, { opacity: 0, duration: 0.26, ease: 'power2.in' }, 0.6)
+      .to(inner, { scale: blowScale, rotationY: -40, duration: 0.52, ease: 'power3.in' }, 0.62)
+      .to(inner, { opacity: 0, duration: 0.2, ease: 'power1.in' }, 0.94)
       .add(() => {
         shelfOpen = false;
         shelf.classList.add('hidden');
         work.classList.remove('hidden');
         gsap.set(work, { opacity: 0, scale: 1.02 });
-      }, 1.02)
-      .to(work, { opacity: 1, scale: 1, duration: 0.45, ease: 'back.out(1.15)' }, 1.04);
+      }, 1.12)
+      .to(work, { opacity: 1, scale: 1, duration: 0.45, ease: 'back.out(1.15)' }, 1.14);
   }
   // 返回书架：反向容器变换——工作台淡出，封面从铺满缩回书架归位（越缩越慢落定）
   function backToShelf() {
