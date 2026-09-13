@@ -842,22 +842,18 @@
       },
     });
     shelfTl = tl;
-    // 节拍分离（三拍要看得见）：①掀开——过冲后"啪嗒"落定 ②定格 0.3s——翻开的书悬停沉稳
-    // ③扑面放大+邻卡散+书架退场 → 化作记录表
-    tl.to(inner, { rotationY: 5, scale: 0.985, duration: 0.1, ease: 'power1.in' }, 0)
-      .to(inner, { rotationY: -78, scale: 1.06, duration: 0.36, ease: 'back.out(1.2)' }, 0.1)
-      .to(inner, { rotationY: -70, duration: 0.3, ease: 'sine.inOut' }, 0.5)      // 定格拍：封面缓缓下沉几度（活着，不僵）
-      .to(others, { opacity: 0, scale: 0.94, duration: 0.3, ease: 'expo.out' }, 0.78)
-      .to(shelf, { opacity: 0, duration: 0.26, ease: 'power2.in' }, 0.76)
-      .to(inner, { scale: blowScale, rotationY: -38, duration: 0.55, ease: 'power3.in' }, 0.78)
-      .to(inner, { opacity: 0, duration: 0.2, ease: 'power1.in' }, 1.12)
+    // 翻开与放大同步进行：封面一边向外掀开、一边扑面放大——同一时长、同一起点的复合运动
+    tl.to(inner, { rotationY: -78, scale: blowScale, duration: 0.85, ease: 'power2.in' }, 0)
+      .to(others, { opacity: 0, scale: 0.94, duration: 0.35, ease: 'expo.out' }, 0.12)
+      .to(shelf, { opacity: 0, duration: 0.3, ease: 'power2.in' }, 0.55)
+      .to(inner, { opacity: 0, duration: 0.2, ease: 'power1.in' }, 0.72)
       .add(() => {
         shelfOpen = false;
         shelf.classList.add('hidden');
         work.classList.remove('hidden');
         gsap.set(work, { opacity: 0, scale: 1.02 });
-      }, 1.3)
-      .to(work, { opacity: 1, scale: 1, duration: 0.45, ease: 'back.out(1.15)' }, 1.32);
+      }, 0.9)
+      .to(work, { opacity: 1, scale: 1, duration: 0.45, ease: 'back.out(1.15)' }, 0.92);
   }
   // 返回书架：反向容器变换——工作台淡出，封面从铺满缩回书架归位（越缩越慢落定）
   function backToShelf() {
@@ -891,7 +887,7 @@
         shelf.classList.remove('hidden', 'opening-stage');
         if (inner) {
           gsap.set(card, { zIndex: 30 });
-          gsap.set(inner, { scale: blowScale(), rotationY: -40, opacity: 1 });   // 从"铺满视口"起步
+          gsap.set(inner, { scale: blowScale(), rotationY: -78, opacity: 1 });   // 起点=翻开+放大的终点姿态
         }
         gsap.set(others, { opacity: 0 });
       }, 0.22)
