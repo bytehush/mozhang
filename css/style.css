@@ -895,6 +895,33 @@ main:has(#tab-ai.active) { padding-bottom: 10px; }
 .chat-msg.ai .cm-bubble li::marker { color: var(--gold); }
 .chat-msg.ai .cm-bubble p { margin: 6px 0; }
 .chat-msg.ai .cm-bubble strong { color: var(--gold-deep); }
+/* 数据依据查看器（引用数据悬浮窗）：让用户直观看到"AI 查了什么、查到了什么" */
+.snap-meta {
+  font-size: 12px; color: var(--gold-deep); font-weight: 600; letter-spacing: .04em;
+  padding: 9px 12px; margin-bottom: 14px;
+  background: rgba(212, 180, 90, .08);
+  border-left: 2px solid rgba(212, 180, 90, .5);
+}
+.sv-tool { margin-bottom: 14px; }
+.sv-tool-head { display: flex; align-items: center; gap: 7px; padding: 4px 2px 6px; font-size: 12.5px; }
+.sv-ico { font-size: 11px; opacity: .8; }
+.sv-verb { font-weight: 700; color: var(--teal); }
+.sv-arg { color: var(--muted); }
+.sv-state { margin-left: auto; color: var(--teal); font-size: 11.5px; }
+.sv-tool pre, .sv-raw {
+  margin: 0; padding: 10px 12px; max-height: 250px; overflow: auto;
+  font-size: 11.5px; line-height: 1.65; color: #4a5a54;
+  font-family: ui-monospace, Consolas, monospace;
+  background: rgba(34, 50, 45, .03);
+  border-left: 2px solid rgba(46, 125, 116, .22);
+  white-space: pre-wrap; word-break: break-all;
+}
+.snap-note {
+  margin-top: 14px; padding-top: 12px;
+  border-top: 1px dashed var(--line);
+  font-size: 12px; color: var(--muted); line-height: 1.75;
+}
+
 /* 消息操作行：默认完全隐形，悬停整条 AI 消息（或键盘聚焦）时淡入的图标组，
    与正文左轴线对齐；触屏设备无悬停，常显 */
 .cm-actions {
@@ -1073,19 +1100,6 @@ main:has(#tab-ai.active) { padding-bottom: 10px; }
 .cm-check.warn { color: var(--gold-deep); background: rgba(176, 138, 46, .12); }
 
 /* 数据快照展开面板（本次真实发给模型的数据） */
-.cm-snap {
-  margin-top: 4px; max-height: 260px; overflow: auto;
-  background: rgba(240, 246, 241, .7);
-  border: 1px dashed var(--line);
-  padding: 8px 10px;
-}
-.cm-snap .cs-label { font-size: 11.5px; color: var(--gold-deep); font-weight: 700; margin-bottom: 4px; }
-.cm-snap pre {
-  margin: 0; white-space: pre-wrap; word-break: break-word;
-  font-size: 11.5px; line-height: 1.7; color: var(--muted);
-  font-family: Consolas, "Courier New", monospace;
-}
-
 /* 会话选择器（chat-head 左） */
 .session-wrap { position: relative; }
 .session-btn {

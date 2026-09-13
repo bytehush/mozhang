@@ -125,9 +125,31 @@
     if (window.JGIcons) window.JGIcons.mount(wrap);
     return wrap;
   }
+  // ---------- 数据依据查看器：把本次回答拿到的真实数据填进 POP 悬浮窗 ----------
+  function fillSnapViewer(snap, toolCalls) {
+    $('snap-meta').textContent = [snap.ledger, snap.model, snap.time ? fmtTime(snap.time) : '']
+      .filter(Boolean).join(' · ');
+    const box = $('snap-detail');
+    if (toolCalls && toolCalls.length) {
+      // 工具化快照：AI 查了哪些工具、什么参数、各自返回了什么——逐项摊开
+      box.innerHTML = toolCalls.map(tc => `
+        <div class="sv-tool">
+          <div class="sv-tool-head">
+            <span class="sv-ico">🔧</span>
+            <span class="sv-verb">${esc(tc.label || TOOL_LABELS[tc.name] || tc.name)}</span>` +
+            (tc.argsText ? `<span class="sv-arg">· ${esc(tc.argsText)}</span>` : '') +
+            `<span class="sv-state">${tc.ok === false ? '✗' : '✓'}</span>
+          </div>
+          <pre>${esc(tc.resultText || '')}</pre>
+        </div>`).join('');
+    } else {
+      box.innerHTML = '<pre class="sv-raw">' + esc(snap.text) + '</pre>';
+    }
+  }
+
   // ---------- 消息操作行：悬停整条消息才淡入的图标组（与正文左轴线对齐）+ 数字核对徽章 ----------
   // appendMsg（历史渲染）与 finishExchange（实时收尾）共用，保证两处行为一致
-  function buildMsgActions(el, content, snap) {
+  function buildMsgActions(el, content, snap, toolCalls) {
     const actions = document.createElement('div');
     actions.className = 'cm-actions';
     const mkBtn = (icon, fallback, tip, fn) => {
@@ -145,16 +167,9 @@
     }));
     if (snap) {
       actions.appendChild(mkBtn('ui-data', '⛁', '引用数据', (e) => {
-        const view = el.querySelector('.cm-snap');
-        view.classList.toggle('hidden');
-        e.currentTarget.classList.toggle('on', !view.classList.contains('hidden'));
-        follow();
+        fillSnapViewer(snap, toolCalls);
+        window.MODAL.open('modal-snap', e.currentTarget);   // 悬浮窗从图标生长，ESC/遮罩原路归回
       }));
-      const view = document.createElement('div');
-      view.className = 'cm-snap hidden';
-      view.innerHTML = '<div class="cs-label">' + (snap.tool ? 'AI 实际查到的数据：' : '本次真实发给模型的数据：') + '</div><pre>' +
-        esc(snap.text) + '</pre>';
-      el.appendChild(view);
       const g = groundingCheck(content, snap.source);
       if (g) {
         const badge = document.createElement('div');
@@ -176,7 +191,7 @@
       el.querySelector('.cm-bubble').innerHTML = renderMarkdown(content);
       // 历史消息里的工具行（Agent 查询记录，点击展开当时查到的结果）
       if (toolCalls && toolCalls.length) fillToolChips(el.querySelector('.cm-acts'), toolCalls);
-      buildMsgActions(el, content, snap);
+      buildMsgActions(el, content, snap, toolCalls);
     }
     listEl.appendChild(el);
     if (save) {
@@ -705,7 +720,7 @@
       saveSessionMsgs();
       maybeSummarize();   // 长对话滚动摘要（后台压缩，不阻塞界面）
       // 操作行（悬停显现图标组 + 数字核对徽章）
-      const actions = buildMsgActions(el, finalText, snap);
+      const actions = buildMsgActions(el, finalText, snap, toolLog);
       if (!snap) {
         // 没查数据的回答若满篇数字：诚实提示"没有数据来源"，不装可靠
         const cleaned = finalText.replace(/\d{4}-\d{1,2}-\d{1,2}/g, ' ').replace(/\b(19|20)\d{2}\b/g, ' ');

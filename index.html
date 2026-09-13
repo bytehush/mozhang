@@ -46,7 +46,7 @@
     <button class="side-item" data-tab="settings"><span class="ico" data-icon="nav-settings" data-fallback="⚙️"></span><span class="txt">设置</span></button>
   </nav>
   <div class="side-foot">
-    <span class="txt">V0.11.2 · 对话流</span>
+    <span class="txt">V0.11.3 · 对话流</span>
     <button class="side-collapse" id="btn-collapse" title="收起/展开侧边栏"><span data-icon="ui-collapse" data-fallback="⟨"></span></button>
   </div>
 </aside>
@@ -329,6 +329,20 @@
       <div class="btn-row">
         <button id="btn-export-download" class="btn primary">下载备份文件</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-mask hidden" id="modal-snap">
+  <div class="modal" role="dialog" aria-label="本次回答的数据依据">
+    <div class="modal-head">
+      <h2><span class="mh" data-icon="ui-data" data-fallback="⛁"></span>数据依据</h2>
+      <button class="modal-close" data-close="modal-snap" title="关闭"><span data-icon="ui-close" data-fallback="✕"></span></button>
+    </div>
+    <div class="modal-body">
+      <div class="snap-meta" id="snap-meta"></div>
+      <div id="snap-detail"></div>
+      <div class="snap-note">以上是 AI 回答这条消息时实际拿到的全部数据——界面所见即真实所查，回答中的数字都能在这里找到出处。</div>
     </div>
   </div>
 </div>
