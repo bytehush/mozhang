@@ -835,16 +835,18 @@
         gsap.set([shelf, inner, ...others], { clearProps: 'all' });
       },
     });
-    tl.to(inner, { rotationY: -76, scale: 1.04, duration: 0.36, ease: 'power2.in', transformOrigin: 'left center' }, 0)
-      .to(others, { opacity: 0, scale: 0.94, duration: 0.3, ease: 'power1.out' }, 0.1)
-      .to(shelf, { opacity: 0, scale: 1.07, duration: 0.32, ease: 'power2.in' }, 0.28)
+    // 非线性节奏：预备（轻压）→ 越掀越快 → 邻卡瞬散缓停 → 加速推近 → 过冲回弹落定
+    tl.to(inner, { rotationY: 5, scale: 0.985, duration: 0.11, ease: 'power1.in' }, 0)
+      .to(inner, { rotationY: -78, scale: 1.05, duration: 0.42, ease: 'power3.in' }, 0.11)
+      .to(others, { opacity: 0, scale: 0.94, duration: 0.32, ease: 'expo.out' }, 0.12)
+      .to(shelf, { opacity: 0, scale: 1.07, duration: 0.3, ease: 'power3.in' }, 0.3)
       .add(() => {
         shelfOpen = false;
         shelf.classList.add('hidden');
         work.classList.remove('hidden');
         gsap.set(work, { opacity: 0, scale: 0.965, y: 12 });
       }, 0.58)
-      .to(work, { opacity: 1, scale: 1, y: 0, duration: 0.45, ease: 'power3.out' }, 0.6);
+      .to(work, { opacity: 1, scale: 1, y: 0, duration: 0.5, ease: 'back.out(1.2)' }, 0.6);
   }
   // 返回书架：反向转场（工作台拉远淡出 → 书架推近归位）
   function backToShelf() {
@@ -858,14 +860,14 @@
         gsap.set(shelf, { clearProps: 'all' });
       },
     });
-    tl.to(work, { opacity: 0, scale: 1.03, duration: 0.24, ease: 'power1.in' }, 0)
+    tl.to(work, { opacity: 0, scale: 1.03, duration: 0.22, ease: 'power2.in' }, 0)
       .add(() => {
         renderBookshelf();
         work.classList.add('hidden');
         shelf.classList.remove('hidden', 'opening-stage');
         gsap.set(shelf, { opacity: 0, scale: 1.05 });
       }, 0.24)
-      .to(shelf, { opacity: 1, scale: 1, duration: 0.4, ease: 'power2.out' }, 0.26);
+      .to(shelf, { opacity: 1, scale: 1, duration: 0.48, ease: 'back.out(1.1)' }, 0.26);
   }
   // ---------- 自定义字段管理器（账本设置弹窗内编辑草稿） ----------
   let cfDraft = [];
