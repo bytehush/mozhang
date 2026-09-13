@@ -895,22 +895,49 @@ main:has(#tab-ai.active) { padding-bottom: 10px; }
 .chat-msg.ai .cm-bubble li::marker { color: var(--gold); }
 .chat-msg.ai .cm-bubble p { margin: 6px 0; }
 .chat-msg.ai .cm-bubble strong { color: var(--gold-deep); }
-/* 数据依据查看器（引用数据悬浮窗）：让用户直观看到"AI 查了什么、查到了什么" */
+/* 数据依据查看器（引用数据悬浮窗）：溯源清单——每个数字可回溯到账本具体记录 */
 .snap-meta {
   font-size: 12px; color: var(--gold-deep); font-weight: 600; letter-spacing: .04em;
   padding: 9px 12px; margin-bottom: 14px;
   background: rgba(212, 180, 90, .08);
   border-left: 2px solid rgba(212, 180, 90, .5);
 }
-.sv-tool { margin-bottom: 14px; }
-.sv-tool-head { display: flex; align-items: center; gap: 7px; padding: 4px 2px 6px; font-size: 12.5px; }
-.sv-ico { font-size: 11px; opacity: .8; }
-.sv-verb { font-weight: 700; color: var(--teal); }
-.sv-arg { color: var(--muted); }
-.sv-state { margin-left: auto; color: var(--teal); font-size: 11.5px; }
-.sv-tool pre, .sv-raw {
-  margin: 0; padding: 10px 12px; max-height: 250px; overflow: auto;
-  font-size: 11.5px; line-height: 1.65; color: #4a5a54;
+.tr-ref { padding: 10px 0; border-bottom: 1px dashed var(--line); }
+.tr-ref:last-of-type { border-bottom: 0; }
+.tr-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.tr-quote { font-size: 13.5px; font-weight: 700; color: var(--ink); letter-spacing: .02em; }
+.tr-tag {
+  font-size: 10.5px; font-weight: 600; padding: 2px 8px; letter-spacing: .05em;
+  color: var(--teal); background: rgba(46, 125, 116, .09);
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+}
+.tr-tag.derived { color: var(--gold-deep); background: rgba(212, 180, 90, .12); }
+.tr-tag.stat { color: var(--muted); background: rgba(34, 50, 45, .06); }
+.tr-tag.miss { color: var(--cinnabar); background: rgba(196, 104, 90, .1); }
+.tr-formula { font-size: 12px; color: var(--muted); padding: 2px 0 6px; line-height: 1.7; }
+.tr-evis { display: flex; flex-direction: column; gap: 3px; }
+.tr-ev {
+  display: flex; align-items: center; gap: 10px;
+  border: 1px solid var(--line); background: rgba(253, 255, 253, .8);
+  padding: 6px 10px; cursor: pointer; font-family: inherit; font-size: 12px; color: var(--ink);
+  text-align: left; transition: border-color .2s ease, background-color .2s ease, transform .2s ease;
+}
+.tr-ev:hover { border-color: var(--teal); background: rgba(46, 125, 116, .06); transform: translateX(2px); }
+.tr-ev-date { font-weight: 700; color: var(--teal); flex: none; }
+.tr-ev-label { color: var(--muted); flex: 1; }
+.tr-ev-val { font-weight: 700; }
+.tr-ev-led { font-size: 10.5px; color: var(--muted); flex: none; opacity: .8; }
+.tr-more { font-size: 11px; color: var(--muted); padding: 4px 2px 0; }
+.tr-empty { font-size: 12.5px; color: var(--muted); }
+.sv-raw-wrap { margin-top: 12px; }
+.sv-raw-wrap summary {
+  cursor: pointer; font-size: 12px; color: var(--muted); user-select: none;
+  padding: 4px 0; transition: color .2s ease;
+}
+.sv-raw-wrap summary:hover { color: var(--teal); }
+.sv-raw-wrap pre {
+  margin: 6px 0 0; padding: 10px 12px; max-height: 220px; overflow: auto;
+  font-size: 11px; line-height: 1.6; color: var(--muted);
   font-family: ui-monospace, Consolas, monospace;
   background: rgba(34, 50, 45, .03);
   border-left: 2px solid rgba(46, 125, 116, .22);
@@ -921,6 +948,12 @@ main:has(#tab-ai.active) { padding-bottom: 10px; }
   border-top: 1px dashed var(--line);
   font-size: 12px; color: var(--muted); line-height: 1.75;
 }
+/* 溯源定位：跳到账本后该条记录高亮闪烁（表格行与卡片通用） */
+@keyframes locateFlash {
+  0%, 100% { background-color: transparent; }
+  25%, 65% { background-color: rgba(212, 180, 90, .28); }
+}
+.locate-flash { animation: locateFlash 1.3s ease 2; }
 
 /* 消息操作行：默认完全隐形，悬停整条 AI 消息（或键盘聚焦）时淡入的图标组，
    与正文左轴线对齐；触屏设备无悬停，常显 */

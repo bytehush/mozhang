@@ -1187,6 +1187,28 @@
     getActiveLedger: () => activeLedger(),
     getActiveTemplate: () => tplOf(activeLedger()),
     switchTab, toast,
+    // AI 引用溯源：跳到记录表并定位一条具体记录（自动切账本/退出多选/重置筛选，定位后高亮闪烁）
+    locateRecord(ledgerId, recId) {
+      const led = ledgers.find(l => l.id === ledgerId);
+      if (!led || !STORE.loadLedRecords(ledgerId).some(r => r.id === recId)) return false;
+      if (selectMode) exitSelect();
+      if (activeId !== ledgerId) switchLedger(ledgerId, { silent: true });
+      switchTab('table');
+      const flash = () => {
+        setTimeout(() => {   // 等筛选/渲染就绪；不用 rAF（后台标签页 rAF 不触发）
+          const el = document.querySelector(`[data-rec-id="${recId}"]`);
+          if (!el) return;
+          el.scrollIntoView({ behavior: REDUCED ? 'auto' : 'smooth', block: 'center' });
+          el.classList.remove('locate-flash');
+          void el.offsetWidth;
+          el.classList.add('locate-flash');
+          setTimeout(() => el.classList.remove('locate-flash'), 2600);
+        }, 60);
+      };
+      if (ui.filter !== 'all') applyFilter('all').then(flash);   // 目标记录可能正被筛选隐藏
+      else flash();
+      return true;
+    },
     // 模型快切（chat.js 输入坞菜单用）：按厂商分组，选中模型即切换其整套 API
     ModelSwitch: {
       activeInfo() {

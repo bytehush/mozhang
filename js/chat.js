@@ -125,26 +125,142 @@
     if (window.JGIcons) window.JGIcons.mount(wrap);
     return wrap;
   }
-  // ---------- 数据依据查看器：把本次回答拿到的真实数据填进 POP 悬浮窗 ----------
-  function fillSnapViewer(snap, toolCalls) {
+  // ---------- 引用溯源：把回答里的每个数字反向定位到账本的具体记录（可点击跳转核对） ----------
+  const TRACE_FIELDS = {
+    hourly: [
+      ['nRate', '正常时薪', 'money'], ['oRate', '加班时薪', 'money'],
+      ['nHours', '正常工时', 'hours'], ['oHours', '加班工时', 'hours'], ['totalHours', '总工时', 'hours'],
+      ['nPay', '正常工资', 'money'], ['oPay', '加班费', 'money'], ['totalPay', '工资', 'money'],
+    ],
+    piece: [['count', '完成件数', 'count'], ['price', '单价', 'money'], ['pay', '工钱', 'money']],
+    general: [['income', '收入', 'money'], ['expense', '支出', 'money'], ['net', '结余', 'money']],
+  };
+  const traceEps = (a, b) => Math.abs(a - b) < 0.005;
+  // 提取回答中引用的数字（带单位；跳过日期、年份与列表序号），最多 14 条防窗口爆炸
+  function extractNumRefs(text) {
+    const clean = String(text)
+      .replace(/[*_`#>]/g, ' ')
+      .replace(/\d{4}-\d{1,2}-\d{1,2}/g, ' ')
+      .replace(/\b(19|20)\d{2}\b/g, ' ');
+    const seen = [];
+    const re = /(\d+(?:\.\d+)?)(\s*(?:元|块|小时|h|件|条|天))?/g;
+    let m;
+    while ((m = re.exec(clean)) !== null && seen.length < 14) {
+      const value = parseFloat(m[1]);
+      const unit = (m[2] || '').trim();
+      if (!isFinite(value)) continue;
+      const after = clean.slice(m.index + m[0].length, m.index + m[0].length + 2);
+      if (!unit && /^[.、)]/.test(after)) continue;         // "1." 列表序号
+      if (seen.some(x => x.value === value && x.unit === unit)) continue;
+      seen.push({ value, unit, quote: m[1] + (unit ? ' ' + unit : '') });
+    }
+    return seen;
+  }
+  // 归因：数字 → 账本原数（哪条记录哪个字段）/ 合计·推算 / 统计聚合 / 无匹配
+  function traceRefs(answerText, toolCalls) {
+    const refs = extractNumRefs(answerText);
+    if (!refs.length) return [];
+    const JG = window.JG;
+    // 本次交换涉及的账本（工具参数里的 ledger；没传默认当前账本）
+    const involved = new Map();
+    (toolCalls || []).forEach(tc => {
+      const nm = tc.args && tc.args.ledger;
+      const all = JG.getLedgers() || [];
+      let led = null;
+      if (nm) led = all.find(l => l.name === nm) || all.find(l => l.name.includes(nm) || String(nm).includes(l.name));
+      if (led) involved.set(led.id, led);
+    });
+    if (!involved.size) { const led = JG.getActiveLedger(); if (led) involved.set(led.id, led); }
+    // 先为每个账本的每个数值字段建数字池（一次构建，全部数字复用）
+    const pools = [];
+    const activeId = (JG.getActiveLedger() || {}).id;
+    involved.forEach(led => {
+      const recs = led.id === activeId ? JG.getRecords() : (window.STORE.loadLedRecords(led.id) || []);
+      (TRACE_FIELDS[led.templateId] || []).forEach(([key, label, kind]) => {
+        const items = [];
+        recs.forEach(r => {
+          const v = r.v[key] != null ? Number(r.v[key]) : (r.m ? Number(r.m[key]) : NaN);
+          if (isFinite(v)) items.push({ ledgerId: led.id, ledgerName: led.name, recId: r.id, date: r.v.date, label, value: v });
+        });
+        if (items.length) pools.push({ key, label, kind, ledgerId: led.id, ledgerName: led.name, items });
+      });
+    });
+    return refs.map(ref => {
+      const unitOk = k => !ref.unit ||
+        (k === 'money' && /元|块/.test(ref.unit)) ||
+        (k === 'hours' && /小时|h/.test(ref.unit)) ||
+        (k === 'count' && /件|条|天/.test(ref.unit)) ||
+        (ref.unit === '天' && k === 'count');
+      // ① 账本原数：某条记录的某字段恰好等于这个数
+      const hits = [];
+      pools.filter(p => unitOk(p.kind)).forEach(p => p.items.forEach(it => {
+        if (traceEps(it.value, ref.value)) hits.push(it);
+      }));
+      if (hits.length) {
+        hits.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+        return Object.assign({}, ref, { kind: 'hit', items: hits.slice(0, 8), hitTotal: hits.length });
+      }
+      // ② 合计 / 平均：整字段聚合恰好等于这个数（推算值，列出构成）
+      for (const p of pools.filter(p => unitOk(p.kind))) {
+        if (p.items.length < 2) continue;
+        const sum = p.items.reduce((s, it) => s + it.value, 0);
+        if (traceEps(sum, ref.value)) return Object.assign({}, ref, { kind: 'sum', items: p.items.slice(0, 8), fieldLabel: p.label });
+        if (traceEps(sum / p.items.length, ref.value)) return Object.assign({}, ref, { kind: 'avg', items: p.items.slice(0, 8), fieldLabel: p.label });
+      }
+      // ③ 统计聚合：数字确实出现在某工具返回的 JSON 里（如"记录天数": 3）
+      const raw = (toolCalls || []).find(tc => tc.resultText &&
+        new RegExp('":\\s*' + String(ref.value).replace('.', '\\.') + '\\s*[,}\n]').test(tc.resultText));
+      if (raw) return Object.assign({}, ref, { kind: 'stat', toolLabel: raw.label });
+      return Object.assign({}, ref, { kind: 'none' });
+    });
+  }
+  function renderTrace(refs) {
+    if (!refs.length) return '<p class="tr-empty">这条回答没有引用具体数字。</p>';
+    const TAG = {
+      hit: ['账本原数', ''],
+      sum: ['合计 · 推算', 'derived'],
+      avg: ['平均 · 推算', 'derived'],
+      stat: ['统计聚合', 'stat'],
+      none: ['未见账本原数', 'miss'],
+    };
+    return refs.map(ref => {
+      const [tag, cls] = TAG[ref.kind];
+      let body = '';
+      if (ref.kind === 'hit') {
+        body = '<div class="tr-evis">' + ref.items.map(it =>
+          `<button class="tr-ev" data-led="${it.ledgerId}" data-rec="${it.recId}">` +
+          `<span class="tr-ev-date">${esc(it.date)}</span><span class="tr-ev-label">${esc(it.label)}</span>` +
+          `<span class="tr-ev-val">${it.value}</span><span class="tr-ev-led">${esc(it.ledgerName)}</span></button>`).join('') +
+          (ref.hitTotal > ref.items.length ? `<div class="tr-more">另有 ${ref.hitTotal - ref.items.length} 条相同数值</div>` : '') + '</div>';
+      } else if (ref.kind === 'sum' || ref.kind === 'avg') {
+        const op = ref.kind === 'sum' ? ' + ' : ' ÷ ';
+        body = `<div class="tr-formula">${esc(ref.fieldLabel)}：${ref.items.map(it => it.value).join(op)}${ref.kind === 'sum' ? '' : ' ÷ ' + ref.items.length}</div>` +
+          '<div class="tr-evis">' + ref.items.map(it =>
+            `<button class="tr-ev" data-led="${it.ledgerId}" data-rec="${it.recId}">` +
+            `<span class="tr-ev-date">${esc(it.date)}</span><span class="tr-ev-label">${esc(it.label)}</span>` +
+            `<span class="tr-ev-val">${it.value}</span><span class="tr-ev-led">${esc(it.ledgerName)}</span></button>`).join('') + '</div>';
+      } else if (ref.kind === 'stat') {
+        body = `<div class="tr-formula">来自工具「${esc(ref.toolLabel)}」返回的统计值</div>`;
+      } else {
+        body = '<div class="tr-formula">账本里找不到这个数——多为推算值，也可能是无依据数字，请留意。</div>';
+      }
+      return `<div class="tr-ref"><div class="tr-head"><span class="tr-quote">「${esc(ref.quote)}」</span><span class="tr-tag ${cls}">${tag}</span></div>${body}</div>`;
+    }).join('');
+  }
+  // ---------- 数据依据查看器（POP 悬浮窗）：溯源清单 + 原始数据折叠 ----------
+  function fillSnapViewer(snap, toolCalls, answerText) {
     $('snap-meta').textContent = [snap.ledger, snap.model, snap.time ? fmtTime(snap.time) : '']
       .filter(Boolean).join(' · ');
-    const box = $('snap-detail');
-    if (toolCalls && toolCalls.length) {
-      // 工具化快照：AI 查了哪些工具、什么参数、各自返回了什么——逐项摊开
-      box.innerHTML = toolCalls.map(tc => `
-        <div class="sv-tool">
-          <div class="sv-tool-head">
-            <span class="sv-ico">🔧</span>
-            <span class="sv-verb">${esc(tc.label || TOOL_LABELS[tc.name] || tc.name)}</span>` +
-            (tc.argsText ? `<span class="sv-arg">· ${esc(tc.argsText)}</span>` : '') +
-            `<span class="sv-state">${tc.ok === false ? '✗' : '✓'}</span>
-          </div>
-          <pre>${esc(tc.resultText || '')}</pre>
-        </div>`).join('');
-    } else {
-      box.innerHTML = '<pre class="sv-raw">' + esc(snap.text) + '</pre>';
-    }
+    $('snap-detail').innerHTML = renderTrace(traceRefs(answerText || '', toolCalls));
+    const raw = toolCalls && toolCalls.length
+      ? toolCalls.map(t => `【${t.label}】${t.argsText ? '参数：' + t.argsText + '；' : ''}\n${t.resultText}`).join('\n\n')
+      : String(snap.text || '');
+    const old = $('snap-raw'); if (old) old.remove();
+    const det = document.createElement('details');
+    det.id = 'snap-raw';
+    det.className = 'sv-raw-wrap';
+    det.innerHTML = '<summary>查看原始查询数据（JSON）</summary><pre>' + esc(raw) + '</pre>';
+    $('snap-detail').appendChild(det);
   }
 
   // ---------- 消息操作行：悬停整条消息才淡入的图标组（与正文左轴线对齐）+ 数字核对徽章 ----------
@@ -167,7 +283,7 @@
     }));
     if (snap) {
       actions.appendChild(mkBtn('ui-data', '⛁', '引用数据', (e) => {
-        fillSnapViewer(snap, toolCalls);
+        fillSnapViewer(snap, toolCalls, content);
         window.MODAL.open('modal-snap', e.currentTarget);   // 悬浮窗从图标生长，ESC/遮罩原路归回
       }));
       const g = groundingCheck(content, snap.source);
@@ -985,6 +1101,14 @@
     scrollEl.addEventListener('scroll', onScroll);
     jumpBtn.addEventListener('click', () => { stick = true; follow(); updateJump(); });
     window.addEventListener('resize', renderTimeline);
+    // 引用溯源：点击出处条目 → 跳到账本里那条记录亲眼核对
+    $('snap-detail').addEventListener('click', (e) => {
+      const ev = e.target.closest('.tr-ev');
+      if (!ev) return;
+      const ok = window.JG.locateRecord(ev.dataset.led, ev.dataset.rec);
+      if (ok) window.MODAL.close();
+      else toast('这条记录已不存在或账本数据有变动');
+    });
 
     $('btn-session').addEventListener('click', (e) => { e.stopPropagation(); toggleSessionMenu(); });
     $('session-menu').addEventListener('click', (e) => e.stopPropagation());
