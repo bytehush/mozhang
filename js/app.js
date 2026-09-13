@@ -143,6 +143,8 @@
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
     const panel = $('tab-' + name);
     if (panel) panel.classList.add('active');
+    // 离开记录表页时退出多选模式：批量操作条挂在 body 层，不收会泄漏到其他页
+    if (name !== 'table' && selectMode) exitSelect();
     const title = $('page-title');
     if (title && PAGE_TITLES[name]) title.textContent = PAGE_TITLES[name];
     window.scrollTo(0, 0);
