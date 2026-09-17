@@ -667,30 +667,7 @@
   }
 
   // ---------- TILT：汇总铭牌 3D 倾斜 + 高光 ----------
-  function initTilt() {
-    if (REDUCED || !window.matchMedia('(pointer: fine)').matches) return;
-    const wrap = $('summary-cards');
-    wrap.addEventListener('mousemove', (e) => {
-      const card = e.target.closest('.sum-card');
-      if (!card) return;
-      const r = card.getBoundingClientRect();
-      const px = (e.clientX - r.left) / r.width;
-      const py = (e.clientY - r.top) / r.height;
-      card.style.setProperty('--gx', (px * 100).toFixed(1) + '%');
-      card.style.setProperty('--gy', (py * 100).toFixed(1) + '%');
-      card.style.transition = 'transform .07s linear, box-shadow .3s ease';
-      card.style.transform =
-        `perspective(700px) rotateX(${((0.5 - py) * 8).toFixed(2)}deg) rotateY(${((px - 0.5) * 10).toFixed(2)}deg) translateY(-2px)`;
-      card.classList.add('tilting');
-    });
-    wrap.addEventListener('mouseout', (e) => {
-      const card = e.target.closest('.sum-card');
-      if (!card || card.contains(e.relatedTarget)) return;
-      card.classList.remove('tilting');
-      card.style.transition = '';
-      card.style.transform = '';
-    });
-  }
+  // TILT 汇总铭牌倾斜已随 V0.14.5 结算行改版退役（见 css 对应注释）
 
   // ---------- 记录表单（悬浮窗内） ----------
   function initForm() {
@@ -1394,7 +1371,6 @@
     initSettings();
     initDataTools();
     initInteractions();
-    initTilt();
 
     renderLedgerSwitcher();
     updateSegUI();

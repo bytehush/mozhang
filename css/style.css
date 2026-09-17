@@ -481,32 +481,29 @@ button:focus-visible, .side-item:focus-visible { outline: 2px solid var(--gold-b
 .btn.danger { color: var(--cinnabar); background: rgba(181, 56, 46, .07); border-color: rgba(181, 56, 46, .4); }
 .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow: none; }
 
-/* ---------- 汇总铭牌（记录表底部） ---------- */
+/* ---------- 账页结算行（V0.14.5）：四个总计写在账纸页脚，像账本的"合计"一行 ----------
+   与页眉呼应：上下各一条暗金细线把账页"合上书页"；数字用书法字，钱用暗金、负数用朱砂 */
 .summary-cards {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 12px; margin-bottom: var(--sp-2);
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  margin-top: 20px; padding-top: 14px;
+  border-top: 1px solid rgba(176, 138, 46, .3);
 }
 .sum-card {
-  padding: 16px 12px; text-align: center;
-  background: linear-gradient(180deg, #24382f 0%, var(--ink-deep) 100%);
-  border-top: 2px solid var(--accent, var(--teal-bright));
-  box-shadow: var(--shadow-card);
-  position: relative;
-  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
-  transition: transform .4s var(--spring), box-shadow .3s ease, filter .3s ease;
+  position: relative; padding: 2px 20px; text-align: left;
+  border-left: 1px solid rgba(176, 138, 46, .16);
 }
-.sum-card::after {
-  content: "◆"; position: absolute; right: 8px; top: 6px;
-  color: var(--accent, var(--teal-bright)); opacity: .55; font-size: 9px;
+.sum-card:first-child { border-left: 0; padding-left: 2px; }
+.sum-card .label {
+  font-size: 11.5px; color: var(--muted); font-weight: 600; letter-spacing: .18em;
 }
-.sum-card:hover { transform: translateY(-5px); box-shadow: 0 16px 32px rgba(22, 36, 31, .3), 0 0 16px var(--glow, rgba(67, 167, 154, .35)); filter: brightness(1.12); }
-.sum-card:nth-child(4n+1) { --accent: #43a79a; --glow: rgba(67, 167, 154, .4); }
-.sum-card:nth-child(4n+2) { --accent: #d4b45a; --glow: rgba(212, 180, 90, .4); }
-.sum-card:nth-child(4n+3) { --accent: #cd6a5c; --glow: rgba(205, 106, 92, .4); }
-.sum-card:nth-child(4n+4) { --accent: #7ba7bc; --glow: rgba(123, 167, 188, .4); }
-.sum-card .label { font-size: 12px; color: #9fb3aa; font-weight: 600; letter-spacing: .06em; }
-.sum-card .value { font-size: 20px; font-weight: 800; color: #e8f1ec; margin-top: 5px; font-variant-numeric: tabular-nums; }
-.sum-card .value.money { color: var(--gold-bright); text-shadow: 0 0 10px rgba(212, 180, 90, .4); }
+.sum-card .value {
+  font-family: var(--font-brush);
+  font-size: 23px; font-weight: 700; color: var(--ink);
+  margin-top: 6px; line-height: 1.15;
+  font-variant-numeric: tabular-nums; letter-spacing: .02em;
+}
+.sum-card .value.money { color: var(--gold-deep); }
+.sum-card .value.expense { color: var(--cinnabar); }
 
 /* ---------- 记录表 ---------- */
 .table-wrap { overflow-x: auto; }
@@ -678,27 +675,55 @@ td .op-btn.del:hover { background: rgba(181, 56, 46, .1); color: var(--cinnabar)
 }
 .ph-meta { font-size: 11.5px; color: var(--muted); letter-spacing: .04em; }
 
-/* ---------- 隐藏式功能坞（V0.14.4）：账本页顶部平时只留一条细抓手 ----------
-   默认收起（只占抓手高度），悬停 / 键盘聚焦 / 点按固定时展开操作按钮；
+/* ---------- 隐藏式功能坞（V0.14.4）+ 墨条工具栏（V0.14.5）----------
+   账本页顶部平时只留一条墨色小签（●●● 抓手），悬停 / 键盘聚焦 / 点按固定时
+   滑出「墨条」：墨青底、暗金描边、金字——与账页题头同一套语言；
+   「书架」是返回动作，用一条暗金细线与工具组分开，「记录」为唯一主按钮（金牌）。
    触屏（无悬停能力）自动常显，功能不丢 */
-.fn-dock { position: relative; padding-top: 14px; }
+.fn-dock { position: relative; padding-top: 15px; text-align: center; }
 .fn-handle {
   position: absolute; top: 0; left: 50%; transform: translateX(-50%);
-  width: 58px; height: 16px; padding: 0 0 1px;
+  width: 62px; height: 17px; padding: 0 0 1px;
   display: flex; align-items: center; justify-content: center;
-  border: 1px solid var(--line); border-top: 0;
-  background: rgba(240, 246, 241, .85);
-  color: var(--muted); font-size: 11px; letter-spacing: .18em; line-height: 1;
+  border: 1px solid rgba(212, 180, 90, .38); border-top: 0;
+  background: linear-gradient(180deg, #2b4238 0%, #1c3129 100%);
+  color: #d9c68a; font-size: 11px; letter-spacing: .22em; line-height: 1;
   cursor: pointer;
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 6px 100%, 0 calc(100% - 6px));
-  transition: color .2s ease, background-color .2s ease;
+  transition: color .2s ease, background .2s ease;
 }
 .fn-handle:hover, .fn-dock.fn-open .fn-handle, .fn-dock:focus-within .fn-handle {
-  color: var(--teal); background: rgba(226, 240, 233, .95);
+  color: #fff2cd; background: linear-gradient(180deg, #355043 0%, #22402f 100%);
 }
 .fn-dock > .action-bar {
+  display: inline-flex; align-items: center; gap: 2px;
+  padding: 6px 10px;
   max-height: 120px; overflow: hidden;
+  background: linear-gradient(180deg, #2b4238 0%, #1c3129 100%);
+  border: 1px solid rgba(212, 180, 90, .38);
+  box-shadow: 0 10px 26px rgba(22, 36, 31, .26), inset 0 1px 0 rgba(236, 217, 160, .1);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
   transition: opacity .22s ease, transform .3s var(--spring), max-height .28s ease, margin-bottom .28s ease;
+}
+.fn-dock .action-bar .btn {
+  border: 0; background: transparent; box-shadow: none; transform: none;
+  color: #cfdcd5; font-size: 13px; font-weight: 600; padding: 7px 13px;
+}
+.fn-dock .action-bar .btn:hover {
+  transform: none; border-color: transparent; box-shadow: none;
+  background: rgba(236, 217, 160, .13); color: #ecd9a0;
+}
+.fn-dock .action-bar .btn.primary {
+  background: linear-gradient(180deg, #d8bb63 0%, #b08a2e 100%);
+  color: #22362c; font-weight: 700;
+}
+.fn-dock .action-bar .btn.primary:hover {
+  background: linear-gradient(180deg, #e2c772 0%, #bb9434 100%); color: #22362c;
+}
+/* 「书架」= 返回动作：右侧一条暗金细线与工具组分开 */
+.fn-dock #btn-shelf {
+  margin-right: 7px; padding-right: 16px;
+  border-right: 1px solid rgba(212, 180, 90, .28);
 }
 .fn-dock:not(:hover):not(:focus-within):not(.fn-open) > .action-bar {
   opacity: 0; transform: translateY(-6px); pointer-events: none;
@@ -848,14 +873,7 @@ body.selecting .rec-card .rc-ops { display: none; }
 .modal-mask.closing { animation: maskOut .26s ease both; }
 @keyframes maskOut { to { opacity: 0; } }
 
-/* ---------- TILT：汇总铭牌 3D 倾斜 + 高光 ---------- */
-.sum-card { transform-style: preserve-3d; }
-.sum-card::before {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: radial-gradient(200px circle at var(--gx, 50%) var(--gy, 50%), rgba(212, 180, 90, .3), transparent 62%);
-  opacity: 0; transition: opacity .25s ease;
-}
-.sum-card.tilting::before { opacity: 1; }
+/* ---------- TILT 汇总铭牌倾斜已随 V0.14.5 结算行改版退役（纸面页脚不适合起伏发光） ---------- */
 
 /* ---------- 账本切换器 ---------- */
 .ledger-switch { position: relative; padding: var(--sp-1) 12px 4px; flex: none; }
@@ -921,7 +939,7 @@ body.side-collapsed .ledger-switch { padding-left: 6px; padding-right: 6px; }
 .tp-desc { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
 
 /* 汇总卡「支出」用色（通用收支模板） */
-.sum-card .value.expense { color: #e08a7d; }
+/* （旧的暗底 expense 配色已并入 V0.14.5 结算行样式） */
 
 /* ---------- 自定义字段管理器 ---------- */
 .cf-row {
@@ -1410,6 +1428,11 @@ main:has(#tab-ai.active) { padding-bottom: 10px; }
   .chat-timeline { right: 0; }
   .chat-dock { padding: 8px 10px 6px; }
   .dock-foot .btn { flex: 1; text-align: center; }
+  /* 结算行：窄屏两列 */
+  .summary-cards { grid-template-columns: repeat(2, 1fr); row-gap: 14px; }
+  .sum-card { padding-left: 14px; }
+  .sum-card:nth-child(odd) { border-left: 0; padding-left: 2px; }
+  .sum-card .value { font-size: 20px; }
 }
 
 /* ---------- 无障碍与兜底 ---------- */
