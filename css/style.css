@@ -678,6 +678,41 @@ td .op-btn.del:hover { background: rgba(181, 56, 46, .1); color: var(--cinnabar)
 }
 .ph-meta { font-size: 11.5px; color: var(--muted); letter-spacing: .04em; }
 
+/* ---------- 隐藏式功能坞（V0.14.4）：账本页顶部平时只留一条细抓手 ----------
+   默认收起（只占抓手高度），悬停 / 键盘聚焦 / 点按固定时展开操作按钮；
+   触屏（无悬停能力）自动常显，功能不丢 */
+.fn-dock { position: relative; padding-top: 14px; }
+.fn-handle {
+  position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  width: 58px; height: 16px; padding: 0 0 1px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--line); border-top: 0;
+  background: rgba(240, 246, 241, .85);
+  color: var(--muted); font-size: 11px; letter-spacing: .18em; line-height: 1;
+  cursor: pointer;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 6px 100%, 0 calc(100% - 6px));
+  transition: color .2s ease, background-color .2s ease;
+}
+.fn-handle:hover, .fn-dock.fn-open .fn-handle, .fn-dock:focus-within .fn-handle {
+  color: var(--teal); background: rgba(226, 240, 233, .95);
+}
+.fn-dock > .action-bar {
+  max-height: 120px; overflow: hidden;
+  transition: opacity .22s ease, transform .3s var(--spring), max-height .28s ease, margin-bottom .28s ease;
+}
+.fn-dock:not(:hover):not(:focus-within):not(.fn-open) > .action-bar {
+  opacity: 0; transform: translateY(-6px); pointer-events: none;
+  max-height: 0; margin-bottom: 0;
+}
+@media (hover: none) {
+  .fn-handle { display: none; }
+  .fn-dock { padding-top: 0; }
+  .fn-dock:not(:hover):not(:focus-within):not(.fn-open) > .action-bar,
+  .fn-dock > .action-bar {
+    opacity: 1; transform: none; pointer-events: auto; max-height: none; margin-bottom: var(--sp-2);
+  }
+}
+
 /* ---------- 明细区工具组（视图切换 + 筛选） ---------- */
 .detail-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
 .detail-head h2 { margin-bottom: 0; }

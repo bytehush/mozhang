@@ -168,6 +168,15 @@
       openLedgerFromShelf(card);
     });
     $('btn-shelf').addEventListener('click', backToShelf);
+    // 隐藏式功能坞：点抓手固定展开（触屏可用），点外部收起
+    $('fn-handle').addEventListener('click', (e) => {
+      e.stopPropagation();
+      $('fn-dock').classList.toggle('fn-open');
+    });
+    document.addEventListener('click', (e) => {
+      const dock = $('fn-dock');
+      if (dock && !dock.contains(e.target)) dock.classList.remove('fn-open');
+    });
     $('btn-collapse').addEventListener('click', () => {
       const collapsed = document.body.classList.toggle('side-collapsed');
       localStorage.setItem(LS_SIDEBAR, collapsed ? '1' : '0');

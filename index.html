@@ -47,7 +47,7 @@
     <button class="side-item" data-tab="settings"><span class="ico" data-icon="nav-settings" data-fallback="⚙️"></span><span class="txt">设置</span></button>
   </nav>
   <div class="side-foot">
-    <span class="txt">V0.14.3 · 主体维度</span>
+    <span class="txt">V0.14.4 · 主体维度</span>
     <button class="side-collapse" id="btn-collapse" title="收起/展开侧边栏"><span data-icon="ui-collapse" data-fallback="⟨"></span></button>
   </div>
 </aside>
@@ -74,6 +74,9 @@
       </div>
       <!-- 账本工作台（翻开后在此记录账） -->
       <div id="ledger-workbench" class="hidden">
+      <!-- 隐藏式功能坞：平时收成一条细抓手，悬停/点按才展开操作按钮 -->
+      <div class="fn-dock" id="fn-dock">
+        <button type="button" class="fn-handle" id="fn-handle" title="功能（悬停或点击展开）">···</button>
       <div class="action-bar">
         <button id="btn-shelf" class="btn" title="返回账本书架"><span class="bi" data-icon="ui-collapse" data-fallback="◀"></span>书架</button>
         <button id="btn-add" class="btn primary"><span class="bi" data-icon="action-record" data-fallback="✒️"></span>记录</button>
@@ -81,6 +84,7 @@
         <button id="btn-export" class="btn"><span class="bi" data-icon="action-export" data-fallback="⬆"></span>导出账单</button>
         <button id="btn-select" class="btn"><span class="bi" data-icon="ui-check" data-fallback="☑"></span>多选</button>
       </div>
+      </div><!-- /fn-dock -->
 
       <div class="card ledger-page">
         <div class="page-head" id="page-head"><!-- 页眉：主体·账本名 + 起止日期（app.js 渲染） --></div>
