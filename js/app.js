@@ -407,6 +407,26 @@
     $('summary-cards').innerHTML = tpl.summary(records)
       .map(c => `<div class="sum-card"><div class="label">${c.label}</div><div class="value ${c.cls || ''}">${c.value}</div></div>`).join('');
   }
+  // 账本页皮肤·页眉（V0.14.3，书架计划第二期）：打开的账本页眉写着"主体·账本名"与起止日期、条数
+  function renderPageHead() {
+    const box = $('page-head');
+    if (!box) return;
+    const led = activeLedger();
+    const tpl = tplOf(led);
+    const subj = led.subject ? led.subject.name : '我';
+    const days = records.length ? TPL().groupByDate(records) : [];
+    const range = days.length
+      ? days[0].date + ' ~ ' + days[days.length - 1].date
+      : '暂无记录';
+    box.innerHTML =
+      '<div class="ph-left">' +
+        '<span class="ph-name">' + esc(led.name) + '</span>' +
+        '<span class="ph-subj">' + esc(subj) + '</span>' +
+      '</div>' +
+      '<div class="ph-meta">' + esc(tpl.name) +
+        (days.length ? ' · ' + days.length + ' 天' : '') +
+        ' · ' + esc(range) + ' · 共 ' + records.length + ' 条</div>';
+  }
   function matchFilter(r) {
     if (ui.filter === 'all') return true;
     const tpl = tplOf(activeLedger());
@@ -490,6 +510,7 @@
   }
   function renderRecords(opts = {}) {
     const { flip = true } = opts;
+    renderPageHead();
     renderSummary();
     const sorted = records.slice().sort((a, b) => b.v.date.localeCompare(a.v.date));
     const viewEl = getViewEl();

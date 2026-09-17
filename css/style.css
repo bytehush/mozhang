@@ -647,6 +647,37 @@ td .op-btn.del:hover { background: rgba(181, 56, 46, .1); color: var(--cinnabar)
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
 
+/* ---------- 账本页皮肤（V0.14.3，书架计划第二期）：摊开的账本 ----------
+   纹理全部用背景层实现（永远在内容下方，不影响表格/卡片交互与层级）：
+   ①左侧装订阴影 ②极淡中缝折线 ③装订缝线（青瓷虚线）④宣纸底 */
+.card.ledger-page {
+  background:
+    linear-gradient(90deg, rgba(60, 50, 30, .06) 0, rgba(60, 50, 30, 0) 26px),
+    linear-gradient(90deg,
+      transparent calc(50% - 1px),
+      rgba(120, 105, 70, .13) calc(50% - .5px),
+      rgba(120, 105, 70, .13) calc(50% + .5px),
+      transparent calc(50% + 1px)),
+    repeating-linear-gradient(180deg, rgba(46, 125, 116, .3) 0 6px, transparent 6px 12px) 14px 12px / 1px calc(100% - 24px) no-repeat,
+    linear-gradient(180deg, #fdfbf4 0%, #faf7ee 100%);
+  border-color: rgba(176, 138, 46, .3);
+  box-shadow: var(--shadow-card), inset 0 0 46px rgba(176, 138, 46, .05);
+}
+.page-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  padding: 0 2px 10px; margin-bottom: 14px;
+  border-bottom: 1px solid rgba(176, 138, 46, .28);
+}
+.ph-left { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.ph-name { font-family: var(--font-brush); font-size: 19px; font-weight: 700; color: var(--ink); letter-spacing: .08em; }
+.ph-subj {
+  font-size: 11px; font-weight: 700; letter-spacing: .1em;
+  color: var(--gold-deep); background: rgba(212, 180, 90, .14);
+  border: 1px solid rgba(212, 180, 90, .4); padding: 1px 7px;
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+}
+.ph-meta { font-size: 11.5px; color: var(--muted); letter-spacing: .04em; }
+
 /* ---------- 明细区工具组（视图切换 + 筛选） ---------- */
 .detail-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
 .detail-head h2 { margin-bottom: 0; }
