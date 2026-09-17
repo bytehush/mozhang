@@ -47,7 +47,7 @@
     <button class="side-item" data-tab="settings"><span class="ico" data-icon="nav-settings" data-fallback="⚙️"></span><span class="txt">设置</span></button>
   </nav>
   <div class="side-foot">
-    <span class="txt">V0.14.6 · 主体维度</span>
+    <span class="txt">V0.14.7 · 主体维度</span>
     <button class="side-collapse" id="btn-collapse" title="收起/展开侧边栏"><span data-icon="ui-collapse" data-fallback="⟨"></span></button>
   </div>
 </aside>
@@ -78,11 +78,13 @@
       <!-- 书脊工具轨（V0.14.6）：操作不悬浮、不占页面方，挂在这本账的书脊上；
            竖排双字标签 + 图标，随长表格滚动跟随（sticky）；「记录」是唯一金牌主按钮 -->
       <nav class="spine-rail" id="spine-rail" aria-label="账本操作">
+        <div class="rail-inner">
         <button id="btn-shelf" class="rail-btn" title="返回账本书架"><span class="rb-ico" data-icon="ui-collapse" data-fallback="◀"></span><span class="rb-txt">书架</span></button>
         <button id="btn-add" class="rail-btn primary" title="记一笔"><span class="rb-ico" data-icon="action-record" data-fallback="✒️"></span><span class="rb-txt">记录</span></button>
         <button id="btn-import" class="rail-btn" title="导入账单"><span class="rb-ico" data-icon="action-import" data-fallback="⬇"></span><span class="rb-txt">导入</span></button>
         <button id="btn-export" class="rail-btn" title="导出账单"><span class="rb-ico" data-icon="action-export" data-fallback="⬆"></span><span class="rb-txt">导出</span></button>
         <button id="btn-select" class="rail-btn" title="多选"><span class="rb-ico" data-icon="ui-check" data-fallback="☑"></span><span class="rb-txt">多选</span></button>
+        </div>
       </nav>
 
       <div class="card ledger-page">

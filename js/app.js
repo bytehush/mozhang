@@ -901,7 +901,8 @@
       onComplete: () => {
         shelf.classList.add('hidden');
         shelf.style.pointerEvents = '';
-        gsap.set([shelf, inner, ...others], { clearProps: SHELF_TL_CLEAR });
+        // 一并清掉 work 的残留 transform（身份矩阵也是 transform，会废掉面板内的 sticky 书脊）
+        gsap.set([shelf, inner, ...others, work], { clearProps: SHELF_TL_CLEAR });
         gsap.set(card, { clearProps: SHELF_TL_CLEAR });
         if (shelfTl === tl) shelfTl = null;
       },
