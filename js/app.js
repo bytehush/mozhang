@@ -872,6 +872,9 @@
       work.classList.remove('hidden');
     }
   }
+  // 转场收尾要清理的属性：只清 GSAP 动过的内联样式——绝不能 clearProps:'all'，
+  // 那会连封面卡上内联的 --bs-accent 主题色一起擦掉，导致所有账本变默认青绿色
+  const SHELF_TL_CLEAR = 'transform,opacity,zIndex';
   // 翻开/返回共用的"扑向屏幕中心"几何：缩放倍数 + 把封面中心移到视口中心的位移
   function shelfBlowGeom(cardEl) {
     const r = cardEl.getBoundingClientRect();
@@ -900,8 +903,8 @@
       onComplete: () => {
         shelf.classList.add('hidden');
         shelf.style.pointerEvents = '';
-        gsap.set([shelf, inner, ...others], { clearProps: 'all' });
-        gsap.set(card, { clearProps: 'all' });
+        gsap.set([shelf, inner, ...others], { clearProps: SHELF_TL_CLEAR });
+        gsap.set(card, { clearProps: SHELF_TL_CLEAR });
         if (shelfTl === tl) shelfTl = null;
       },
     });
@@ -930,9 +933,9 @@
     const tl = gsap.timeline({
       onComplete: () => {
         work.classList.add('hidden');
-        shelf.querySelectorAll('.bs-card').forEach(c => gsap.set(c, { clearProps: 'all' }));
-        shelf.querySelectorAll('.bs-inner').forEach(el => gsap.set(el, { clearProps: 'all' }));
-        gsap.set([work, shelf], { clearProps: 'all' });
+        shelf.querySelectorAll('.bs-card').forEach(c => gsap.set(c, { clearProps: SHELF_TL_CLEAR }));
+        shelf.querySelectorAll('.bs-inner').forEach(el => gsap.set(el, { clearProps: SHELF_TL_CLEAR }));
+        gsap.set([work, shelf], { clearProps: SHELF_TL_CLEAR });
         if (shelfTl === tl) shelfTl = null;
       },
     });
