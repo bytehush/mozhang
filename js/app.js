@@ -26,7 +26,7 @@
   let formBuiltFor = null;      // 表单当前是为哪个账本构建的
 
   // ---------- 工具与悬浮窗（公共版在 js/utils.js / js/modals.js） ----------
-  const { $, wait, uid, round2, money, fmtDate, esc, toast, REDUCED } = window.UTIL;
+  const { $, wait, uid, round2, money, fmtDate, weekdayCN, esc, toast, REDUCED } = window.UTIL;
   const { open: openModal, close: closeModal, init: initModals, label: setCommitLabel, done: setCommitDone, play: commitPlay } = window.MODAL;
 
   function apiName(p) { return window.STORE.apiName(p); }
@@ -526,6 +526,119 @@
     window.dispatchEvent(new CustomEvent('jigong:datachanged'));
   }
   function dataChanged() { persistData(); renderRecords(); }
+
+  // ---------- AI 记账草稿（V0.15.0）：AI 只产"草稿"，用户点【入账】才真正落盘 ----------
+  // A 类安全设计（对应外部方案的 create_txn）：
+  //   · 工具层不写任何数据（draftRecord 只校验 + 登记草稿）
+  //   · 确认卡片显示的都是程序算的值（模板 compute/preview），模型口算数字一律不采信
+  //   · 落盘复用与手动记账完全相同的链路（validate → compute → signature 查重 → 落盘刷新）
+  //   · 幂等（同卡重复确认无副作用）、可撤销、5 分钟过期（发新消息也作废）
+  const DRAFT_TTL_MS = 5 * 60 * 1000;
+  let draftSeq = 0;
+  const drafts = [];   // {id, ledgerId, v, createdAt, status: pending|committed|duplicate|expired, rendered, recordId}
+  function flattenTemplateFields(tpl) {
+    const out = [];
+    // 递归打平：form 里的字段可能藏在 group.fields、toggle.block.fields 等嵌套结构里；
+    // block 内的字段带 ctx（区块名），供卡片区分两组"开始/结束时间"
+    const walk = (node, ctx) => {
+      if (!node) return;
+      if (Array.isArray(node.fields)) node.fields.forEach(f => { if (f && f.key) out.push(Object.assign({}, f, ctx ? { ctx } : {})); });
+      if (Array.isArray(node.rows)) node.rows.forEach(r => walk(r, ctx));
+      if (node.block) walk(node.block, node.block.title || ctx);
+    };
+    (tpl.form || []).forEach(n => walk(n, null));
+    return out;
+  }
+  const ledgerLabel = l => ((l.subject ? l.subject.name : '我') + '·' + l.name);
+  // 起草（工具调用，不落盘）：字段缺省取账本设置（与手记表单同一规则），校验不过直接拒绝
+  function draftRecord(values) {
+    const led = activeLedger();
+    const tpl = tplOf(led);
+    const v = {};
+    flattenTemplateFields(tpl).forEach(f => {
+      let val = values ? values[f.key] : undefined;
+      if ((val == null || val === '') && f.fromLedger && led.settings && led.settings[f.fromLedger] != null) {
+        val = led.settings[f.fromLedger];   // 时薪/单价缺省取账本设置
+      }
+      if (val != null && val !== '') v[f.key] = val;
+    });
+    const err = tpl.validate(v);
+    if (err) return { error: '草稿被拒：' + err + '（缺信息就反问用户，禁止编造）' };
+    const d = {
+      id: 'draft-' + (++draftSeq) + '-' + Date.now(),
+      ledgerId: led.id, v, createdAt: Date.now(), status: 'pending', rendered: false, recordId: null,
+    };
+    drafts.push(d);
+    return {
+      草稿编号: d.id,
+      状态: '待确认（不会自动入账）',
+      账本: ledgerLabel(led),
+      程序计算结果: tpl.compute(v),
+      提示: '确认卡片已展示给用户；请提醒用户核对后点「入账」，真正的写入由用户确认触发。',
+    };
+  }
+  // 入账（用户点确认后）：二次校验 + 查重 + 复用手动记账落盘链路
+  function commitDraft(id) {
+    const d = drafts.find(x => x.id === id);
+    if (!d) return { error: '草稿不存在' };
+    if (d.status === 'committed') return { ok: true, recordId: d.recordId };   // 幂等
+    if (d.status === 'duplicate') return { error: '这条已经记过了（未重复入账）', dup: true };
+    if (d.status === 'expired' || Date.now() - d.createdAt > DRAFT_TTL_MS) {
+      d.status = 'expired';
+      return { error: '草稿已过期，请重新让军师起草', expired: true };
+    }
+    if (d.ledgerId !== activeId) return { error: '你已切换到其他账本，请先回到「' + ledgerLabel(activeLedger()) + '」所在账本再入账' };
+    const led = activeLedger();
+    const tpl = tplOf(led);
+    const err = tpl.validate(d.v);   // 二次校验（入账前设置可能已变化）
+    if (err) { d.status = 'expired'; return { error: '校验未通过：' + err, expired: true }; }
+    const rec = { id: uid(), v: d.v, m: tpl.compute(d.v) };
+    if (records.some(r => ledgerSignature(r, led) === ledgerSignature(rec, led))) {
+      d.status = 'duplicate';
+      return { error: '这条已经记过了，未重复入账', dup: true };
+    }
+    records.push(rec);
+    dataChanged();   // 与手动记账同一落盘链路：存储 + 表格/汇总/图表刷新
+    d.status = 'committed';
+    d.recordId = rec.id;
+    return { ok: true, recordId: rec.id };
+  }
+  // 撤销：删掉刚入账的那条（秒级还原）
+  function undoRecord(id) {
+    const i = records.findIndex(r => r.id === id);
+    if (i < 0) return false;
+    records.splice(i, 1);
+    dataChanged();
+    return true;
+  }
+  // 取出尚未展示的草稿（chat.js 收到后渲染确认卡片）
+  function takeNewDrafts() {
+    const out = drafts.filter(d => !d.rendered);
+    out.forEach(d => { d.rendered = true; });
+    return out.map(d => ({ id: d.id, ledgerId: d.ledgerId, status: d.status, createdAt: d.createdAt }));
+  }
+  // 草稿的展示视图（卡片渲染用；数值一律来自程序）
+  function draftView(id) {
+    const d = drafts.find(x => x.id === id);
+    if (!d) return null;
+    const led = ledgers.find(l => l.id === d.ledgerId) || activeLedger();
+    const tpl = tplOf(led);
+    const rows = flattenTemplateFields(tpl)
+      .filter(f => d.v[f.key] != null && d.v[f.key] !== '')
+      .map(f => ({
+        label: (f.ctx ? String(f.ctx).replace(/[（(].*?[）)]/g, '').replace(/[*＊\s]/g, '') + ' · ' : '') +
+          String(f.label).replace(/（.*?）/g, ''),
+        value: f.kind === 'date' ? d.v[f.key] + ' ' + weekdayCN(d.v[f.key]) : String(d.v[f.key]),
+      }));
+    return { id: d.id, ledger: ledgerLabel(led), rows, calc: tpl.preview(d.v), status: d.status };
+  }
+  // 过期作废（发新消息时调用；入账时也会再验一次）
+  function expireDrafts() {
+    const now = Date.now();
+    let n = 0;
+    drafts.forEach(d => { if (d.status === 'pending' && now - d.createdAt > DRAFT_TTL_MS) { d.status = 'expired'; n++; } });
+    return n;
+  }
 
   // ---------- LAYOUT：表格 ⇄ 卡片 ----------
   function syncViewVisibility() {
@@ -1384,6 +1497,8 @@
     getActiveTemplate: () => tplOf(activeLedger()),
     switchTab, toast,
     createLedgerFromAI,   // AI 建账本（aitools.js 的 create_ledger 工具调用；后端确定性执行）
+    // AI 记账草稿（A 类安全：AI 只产草稿，用户确认才落盘）
+    draftRecord, commitDraft, undoRecord, takeNewDrafts, draftView, expireDrafts,
     // AI 引用溯源：跳到记录表并定位一条具体记录（自动切账本/退出多选/重置筛选，定位后高亮闪烁）
     locateRecord(ledgerId, recId) {
       const led = ledgers.find(l => l.id === ledgerId);

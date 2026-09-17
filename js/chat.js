@@ -469,6 +469,57 @@
       addToolChip(acts, t.label || TOOL_LABELS[t.name] || t.name, t.argsText).done(t.ok !== false, t.resultText || '（无记录）'));
   }
 
+  // ---------- AI 记账确认卡（V0.15.0，A 类安全交互）----------
+  // AI 只起草；卡片上的每个数字都来自程序（模板 preview/compute）；点「入账」才落盘，可撤销
+  function renderDraftCard(el, draftId) {
+    const view = window.JG.draftView(draftId);
+    if (!view) return;
+    const box = el.querySelector('.cm-acts');
+    box.classList.remove('hidden');
+    const card = document.createElement('div');
+    card.className = 'draft-card';
+    card.innerHTML =
+      '<div class="dc-head"><span class="dc-title">拟记账</span><span class="dc-ledger">记入：' + esc(view.ledger) + '</span></div>' +
+      '<div class="dc-rows">' + view.rows.map(r =>
+        '<div class="dc-row"><span class="dc-label">' + esc(r.label) + '</span><span class="dc-val">' + esc(r.value) + '</span></div>').join('') + '</div>' +
+      '<div class="dc-calc">' + view.calc + '</div>' +
+      '<div class="dc-ops">' +
+        '<button type="button" class="dc-btn primary" data-act="commit">入账</button>' +
+        '<button type="button" class="dc-btn ghost" data-act="edit">改一下</button>' +
+      '</div>' +
+      '<div class="dc-note hidden"></div>';
+    box.appendChild(card);
+    const ops = card.querySelector('.dc-ops');
+    const note = card.querySelector('.dc-note');
+    const setState = (txt, cls, recordId) => {
+      ops.innerHTML = '<div class="dc-state ' + (cls || '') + '">' + esc(txt) + '</div>';
+      if (recordId) {
+        const u = document.createElement('button');
+        u.type = 'button';
+        u.className = 'dc-btn ghost';
+        u.textContent = '撤销';
+        u.addEventListener('click', () => {
+          if (window.JG.undoRecord(recordId)) { setState('已撤销', 'muted', null); toast('已撤销'); }
+          else toast('撤销失败：这条记录不存在');
+        });
+        ops.appendChild(u);
+      }
+    };
+    card.querySelector('[data-act="commit"]').addEventListener('click', () => {
+      const res = window.JG.commitDraft(draftId);
+      if (res.ok) { toast('已入账 ✓'); setState('已入账', '', res.recordId); }
+      else if (res.dup) { toast(res.error); setState('重复 · 未入账', 'muted', null); }
+      else if (res.expired) { toast(res.error); setState('已过期', 'muted', null); }
+      else toast(res.error);
+    });
+    card.querySelector('[data-act="edit"]').addEventListener('click', () => {
+      note.textContent = '直接告诉军师怎么改（比如"加班改成 8 点结束"），会重新给你一张卡片';
+      note.classList.remove('hidden');
+      inputEl.focus();
+    });
+    follow();
+  }
+
   // ---------- 平滑打字机（节奏缓冲器） ----------
   function makeTyper(bubbleEl, onDone) {
     let pending = '';   // 已到达未显示
@@ -533,7 +584,8 @@
       '3) 工具返回的结果是唯一数据来源；没查过的信息不得编造；\n' +
       '4) 新建账本前必须能确定"给谁记的"（主体）和账本类型：用户说清楚了才可调用 create_ledger；主体或类型不明确时先在回复里反问用户，禁止默认、禁止猜测；创建前先用 list_ledgers 查重，已有同主体同名同类账本时如实告知，不要重复建；\n' +
       '5) 账本一律用"主体·账本名"称呼（如"妈妈·工资账本"）；遇到同名账本先按主体区分，拿不准就问用户，禁止猜；\n' +
-      '6) 严禁在正文中书写工具名或 JSON 参数来"假装调用工具"——要么真正发起工具调用，要么直接作答。\n\n' +
+      '6) 严禁在正文中书写工具名或 JSON 参数来"假装调用工具"——要么真正发起工具调用，要么直接作答；\n' +
+      '7) 用户要求记账（"帮我记一笔…"）时：信息齐了就用 create_record 起草，然后请用户核对卡片并点「入账」；信息不够（缺日期/时段/单价等）就反问；入账必须由用户点击触发，禁止声称"已经记好了"。\n\n' +
       HARD_RULES;
     // 长对话记忆：旧对话的滚动摘要（后台自动压缩更新）注入系统提示
     const sx = currentSession();
@@ -567,7 +619,7 @@
       `\n\n今天是 ${dstr}（周${'日一二三四五六'[today.getDay()]}）。` +
       `\n\n【用户的账本目录】\n${window.AITOOLS.ledgerDir()}` +
       `\n\n【本次固定数据快照】以下是系统为你准备好的当前账本（${led.name}）真实数据，直接依据它回答：\n` + statsText +
-      `\n\n【重要】你无法调用任何工具；严禁在回答中出现工具名或 JSON 参数（写了也无效）；直接依据上方快照数据作答。\n\n` +
+      `\n\n【重要】你无法调用任何工具（包括记账工具）；严禁在回答中出现工具名或 JSON 参数（写了也无效）；直接依据上方快照数据作答；若用户要记账，请引导他点页面上的「记录」按钮手动记。\n\n` +
       HARD_RULES;
     if (sx && sx.summary) sys += '\n\n【此前对话的要点摘要】\n' + sx.summary;
     const ctx = msgs.slice(-CTX_TURNS).map(m => ({
@@ -680,6 +732,8 @@
     if (!text) return;
     const led = window.JG.getActiveLedger();
     storeLedgerId = led.id;
+    // 发新消息 = 旧草稿不再有效（确认卡过期作废，防止隔很久误点）
+    try { if (window.JG.expireDrafts) window.JG.expireDrafts(); } catch { /* 忽略 */ }
 
     streaming = true;
     userStopped = false;
@@ -832,6 +886,10 @@
             content: resultText.slice(0, 12000),
           });
         }
+        // AI 记账草稿：为每张新草稿渲染确认卡片（A 类安全：只有用户点「入账」才真正写入）
+        try {
+          (window.JG.takeNewDrafts ? window.JG.takeNewDrafts() : []).forEach(d => renderDraftCard(el, d.id));
+        } catch { /* 卡片失败不影响主流程 */ }
         thinkStart = Date.now();
         thinkLineRef = thinkLine(acts, '继续推演');
         gotAny = false;

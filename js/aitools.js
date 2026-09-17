@@ -9,6 +9,8 @@
      get_daily       某账本按天汇总明细（中文键，模型可直接引用）
      get_day_records 某天全部原始记录（含时段/单价/备注等细节）
      create_ledger   新建账本（主体+类型必须明确；创建由 app.js 确定性执行，含糊即拒绝）
+     create_record   起草一笔记账（A 类安全：只产草稿不落盘，用户点「入账」才写入；
+                     schema 按当前账本模板动态生成，参数=该模板的表单字段）
    主体维度：账本带 subject{rel,name}（我/爸爸/妈妈/爱人/孩子/全家/其他），
    全名展示为"主体·账本名"；同名多本时会报歧义要求用主体区分——禁止模型猜。
    结果对象一律用中文键：模型引用更稳，界面数字核对也按这些文本比对。 */
@@ -123,7 +125,49 @@
   }
 
   // ---------- 对模型声明的工具 schema（OpenAI 兼容 tools 格式） ----------
-  const schemas = [
+  // 当前账本模板的字段列表（递归打平 form：字段可能藏在 group.fields / toggle.block.fields 里）
+  function flattenTplFields(tpl) {
+    const out = [];
+    const walk = (node, ctx) => {
+      if (!node) return;
+      if (Array.isArray(node.fields)) node.fields.forEach(f => { if (f && f.key) out.push(Object.assign({}, f, ctx ? { ctx } : {})); });
+      if (Array.isArray(node.rows)) node.rows.forEach(r => walk(r, ctx));
+      if (node.block) walk(node.block, node.block.title || ctx);
+    };
+    (tpl.form || []).forEach(n => walk(n, null));
+    return out;
+  }
+  // create_record 的 schema 按【当前账本模板】动态生成（每轮取一次），
+  // 字段即该模板的表单字段——AI 只知道它能填什么，不知道任何账本内部信息
+  function createRecordSchema() {
+    const led = window.JG.getActiveLedger();
+    const tpl = tplOf(led);
+    const fields = flattenTplFields(tpl);
+    const props = {};
+    fields.forEach(f => {
+      const isNum = f.kind === 'number' || f.kind === 'money';
+      const ctx = f.ctx ? String(f.ctx).replace(/[*＊\s]/g, '') + ' ' : '';
+      props[f.key] = {
+        type: isNum ? 'number' : 'string',
+        description: ctx + f.label +
+          (f.kind === 'time' ? '（24小时制，如 08:00）' : '') +
+          (f.kind === 'date' ? '（必须换算成具体日期 YYYY-MM-DD，"今天"也要换算）' : ''),
+      };
+    });
+    return {
+      type: 'function',
+      function: {
+        name: 'create_record',
+        description: '为用户在当前账本（' + displayName(led) + '）起草一笔记录。⚠️ 只起草、不会直接入账——系统会给用户展示确认卡片，用户点「入账」才真正写入。规则：只填用户明确说出的字段；日期必须换算成具体日期；缺必需字段或表述含糊（如"下午三点多"）先反问，禁止编造；用户想改就重新起草一笔新的。',
+        parameters: {
+          type: 'object',
+          properties: props,
+          required: fields.filter(f => f.required).map(f => f.key),
+        },
+      },
+    };
+  }
+  const staticSchemas = [
     {
       type: 'function',
       function: {
@@ -195,7 +239,8 @@
 
   // ---------- 对外 ----------
   window.AITOOLS = {
-    schemas,
+    // 工具声明：静态 5 个 + 按当前账本模板动态生成的 create_record（每轮取用时生成）
+    get schemas() { return staticSchemas.concat([createRecordSchema()]); },
     // 本地执行一次工具调用（name 须是 schemas 里声明过的工具名）
     run(name, args) {
       args = args || {};
@@ -205,6 +250,7 @@
         case 'get_daily': return toolGetDaily(args);
         case 'get_day_records': return toolGetDayRecords(args);
         case 'create_ledger': return window.JG.createLedgerFromAI(args);   // 创建由 app.js 确定性执行
+        case 'create_record': return window.JG.draftRecord(args);          // 只产草稿，用户确认才落盘（A 类安全）
         default: throw new Error('未知工具：' + name);
       }
     },
