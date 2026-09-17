@@ -34,6 +34,11 @@
   let summarizeBusy = false;  // 滚动摘要后台压缩中
   let thinkStart = 0;         // 本轮思考开始时刻（思考行显示"思考 · N 秒"用）
   let tlEl = null;            // 回合时间线（右侧锚点列）
+  // 已知不支持工具调用的模型（本会话记忆）：命中后直接走"数据直读"模式，不再反复试探
+  const toolIncapableModels = new Set();
+  // 伪工具调用特征：模型不支持 function calling 时会把"调用"写进正文
+  // （如"我去调取数据。get_ledger {"name":"…"}" 或裸写 tool_calls/JSON 参数）
+  const FAKE_TOOL_RE = /\{\s*"name"\s*:|\b(?:get_ledger|get_stats|get_daily|get_day_records|list_ledgers|create_ledger)\b\s*[\(\n{]|tool_calls/;
 
   // ---------- 工具（公共版在 js/utils.js） ----------
   const { $, esc, uid, wait, toast, REDUCED } = window.UTIL;
@@ -527,7 +532,8 @@
       '2) 纯寒暄、通用生活建议等与数据无关的问题，直接回答，不要调用工具；\n' +
       '3) 工具返回的结果是唯一数据来源；没查过的信息不得编造；\n' +
       '4) 新建账本前必须能确定"给谁记的"（主体）和账本类型：用户说清楚了才可调用 create_ledger；主体或类型不明确时先在回复里反问用户，禁止默认、禁止猜测；创建前先用 list_ledgers 查重，已有同主体同名同类账本时如实告知，不要重复建；\n' +
-      '5) 账本一律用"主体·账本名"称呼（如"妈妈·工资账本"）；遇到同名账本先按主体区分，拿不准就问用户，禁止猜。\n\n' +
+      '5) 账本一律用"主体·账本名"称呼（如"妈妈·工资账本"）；遇到同名账本先按主体区分，拿不准就问用户，禁止猜；\n' +
+      '6) 严禁在正文中书写工具名或 JSON 参数来"假装调用工具"——要么真正发起工具调用，要么直接作答。\n\n' +
       HARD_RULES;
     // 长对话记忆：旧对话的滚动摘要（后台自动压缩更新）注入系统提示
     const sx = currentSession();
@@ -538,7 +544,45 @@
       role: m.role,
       content: String(m.content).slice(0, MSG_CAP),
     }));
-    return [{ role: 'system', content: sys.slice(0, 9000) }].concat(ctx);
+    return { messages: [{ role: 'system', content: sys.slice(0, 9000) }].concat(ctx), snap: null };
+  }
+  // 降级模式（模型不支持工具调用时）：把真实数据直接装进提示词——即 V0.9.x 的"数据快照"方案。
+  // 检测到伪工具调用后自动切换，保证用户依然拿到基于真实数据的回答。
+  function buildDegraded() {
+    const JG = window.JG;
+    const led = JG.getActiveLedger();
+    const tpl = JG.getActiveTemplate();
+    const records = JG.getRecords();
+    const stats = tpl.ai.buildStats(records);
+    const daily = tpl.ai.dailyLines(records);
+    const statsText = stats
+      ? '【统计 JSON】\n' + JSON.stringify(stats, null, 2) + '\n【每日明细（最后90条）】\n' + daily
+      : '（该账本还没有任何记录：提醒用户先记几笔才有数据可分析）';
+    const today = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const dstr = today.getFullYear() + '-' + pad(today.getMonth() + 1) + '-' + pad(today.getDate());
+    const sx = currentSession();
+    let sys = tpl.ai.persona +
+      `\n\n现在以"对话"方式与用户交流：语气自然，像面对面聊天；默认回答简洁（200~500字），答其所问。` +
+      `\n\n今天是 ${dstr}（周${'日一二三四五六'[today.getDay()]}）。` +
+      `\n\n【用户的账本目录】\n${window.AITOOLS.ledgerDir()}` +
+      `\n\n【本次固定数据快照】以下是系统为你准备好的当前账本（${led.name}）真实数据，直接依据它回答：\n` + statsText +
+      `\n\n【重要】你无法调用任何工具；严禁在回答中出现工具名或 JSON 参数（写了也无效）；直接依据上方快照数据作答。\n\n` +
+      HARD_RULES;
+    if (sx && sx.summary) sys += '\n\n【此前对话的要点摘要】\n' + sx.summary;
+    const ctx = msgs.slice(-CTX_TURNS).map(m => ({
+      role: m.role,
+      content: String(m.content).slice(0, MSG_CAP),
+    }));
+    const snap = led && records.length ? {
+      tool: false,
+      ledger: led.name,
+      model: (JG.ModelSwitch.activeInfo() || { model: null }).model?.model || '',
+      time: Date.now(),
+      text: '【数据直读模式（模型不支持工具调用）】\n【账本】' + led.name + '\n' + statsText,
+      source: statsText + (sx && sx.summary ? '\n【摘要】' + sx.summary : ''),
+    } : null;
+    return { messages: [{ role: 'system', content: sys.slice(0, 9000) }].concat(ctx), snap };
   }
 
   // ---------- SSE 流读取（含工具调用增量拼装） ----------
@@ -666,6 +710,7 @@
     controller = new AbortController();
     // 本次交换的全部工具调用记录（UI 卡片 + 持久化 + 数字核对依据）
     const toolLog = [];
+    let degradedSnap = null;   // 数据直读模式的快照（供 📦 引用数据与数字核对）
     const makeSnap = () => toolLog.length ? {
       tool: true,
       ledger: led.name,
@@ -674,15 +719,24 @@
       text: '本次 AI 通过工具查询到的真实数据：\n' + toolLog.map(t =>
         `【${t.label}】${t.argsText ? '参数：' + t.argsText + '；' : ''}结果：\n${t.resultText}`).join('\n\n'),
       source: toolLog.map(t => t.resultText).join('\n'),
-    } : null;
-    const typer = makeTyper(bubble, (finalText) => {
-      if (!active || active.typer !== typer) return;   // 已被停止终结，忽略迟到的完成
-      finishExchange(el, bubble, finalText, false, makeSnap(), toolLog);
-    });
-    active = { typer, bubble, el };
-
+    } : degradedSnap;
     const api = window.JG.ModelSwitch.activeInfo();
-    const messages = buildBase();
+    const modelKey = api.provider + '/' + (api.model ? api.model.model : '');
+    let degraded = toolIncapableModels.has(modelKey);   // 该模型已知不会真调用工具 → 直接数据直读
+    let base = buildBase();
+    let messages = base.messages;
+    let typer = null;
+    const onDone = (finalText) => {
+      if (!active || active.typer !== typer) return;   // 已被停止终结，忽略迟到的完成
+      finishExchange(el, bubble, finalText, false, makeSnap(), toolLog, degraded);
+    };
+    typer = makeTyper(bubble, onDone);
+    active = { typer, bubble, el };
+    if (degraded) {
+      const d = buildDegraded();
+      messages = d.messages;
+      degradedSnap = d.snap;
+    }
     const baseBody = {
       apiKey: api.apiKey,
       model: api.model ? api.model.model : 'glm-4-flash',
@@ -704,7 +758,9 @@
       let round = 0;
       while (round < AGENT_ROUNDS + 1) {   // 1~AGENT_ROUNDS 轮带工具，最后一轮强制作答
         round++;
-        const withTools = round <= AGENT_ROUNDS && window.AITOOLS && window.AITOOLS.schemas.length;
+        const withTools = !degraded && round <= AGENT_ROUNDS && window.AITOOLS && window.AITOOLS.schemas.length;
+        let fakeHit = false;    // 本轮正文里出现"假工具调用"（模型不会真调用工具）
+        let streamed = '';
         armWatch();
         const res = await streamRequest(Object.assign({}, baseBody, {
           messages,
@@ -717,6 +773,16 @@
             if (thinkLineRef) thinkLineRef.querySelector('.al-verb').textContent = '推演';
             return;
           }
+          if (withTools) {
+            // 假工具调用检测：模型把"调用"写进正文（如 get_ledger {"name":…}）＝ 它拿不到/不会用工具
+            if (fakeHit) return;                      // 已判定的假调用内容不再展示
+            streamed += delta;
+            if (FAKE_TOOL_RE.test(streamed)) {
+              fakeHit = true;
+              if (thinkLineRef) { finishThink(thinkLineRef, acts); thinkLineRef = null; }
+              return;
+            }
+          }
           if (!gotAny) {
             gotAny = true;
             finishThink(thinkLineRef, acts);   // 首字到达：思考行收成「思考 · N 秒」
@@ -724,7 +790,26 @@
           }
           typer.push(delta);
         });
-        if (!res.toolCalls.length) break;   // 无工具调用：最终回答已流式吐完
+        if (!res.toolCalls.length) {
+          if (fakeHit) {
+            // 该模型不会真调用工具：记住它，清掉这段"假调用"输出，切换「数据直读」模式重答
+            toolIncapableModels.add(modelKey);
+            degraded = true;
+            typer.stop();
+            bubble.innerHTML = '';
+            toolLog.length = 0;
+            const d = buildDegraded();
+            messages = d.messages;
+            degradedSnap = d.snap;
+            typer = makeTyper(bubble, onDone);
+            active = { typer, bubble, el };
+            gotAny = false;
+            toast('当前模型不支持工具调用，已切换「数据直读」模式重试');
+            round = 0;
+            continue;
+          }
+          break;   // 无工具调用：最终回答已流式吐完
+        }
         // 有工具调用：逐个本地执行，结果回喂模型继续决策
         messages.push({ role: 'assistant', content: typer.text() || null, tool_calls: res.toolCalls });
         for (const rc of res.toolCalls) {
@@ -817,7 +902,7 @@
 
   // 终结一次交换：流式正常完成与手动停止共用，保证按钮/历史状态一致
   // snap = 本次工具查询快照（用于「📦 引用数据」展示与数字核对徽章）；toolLog = 工具调用记录
-  function finishExchange(el, bubble, finalText, stopped, snap, toolLog) {
+  function finishExchange(el, bubble, finalText, stopped, snap, toolLog, degraded) {
     bubble.innerHTML = renderMarkdown(finalText) +
       (stopped ? '<p class="cm-err">（已停止，内容不完整）</p>' : '');
     streaming = false;
@@ -839,7 +924,13 @@
       maybeSummarize();   // 长对话滚动摘要（后台压缩，不阻塞界面）
       // 操作行（悬停显现图标组 + 数字核对徽章）
       const actions = buildMsgActions(el, finalText, snap, toolLog);
-      if (!snap) {
+      if (degraded) {
+        // 该模型不支持工具调用：本条是用"数据直读"模式答的（数据依然真实，只是走快照）
+        const badge = document.createElement('div');
+        badge.className = 'cm-check warn';
+        badge.textContent = '△ 该模型不支持工具调用，本条已自动改用数据直读';
+        actions.appendChild(badge);
+      } else if (!snap) {
         // 没查数据的回答若满篇数字：诚实提示"没有数据来源"，不装可靠
         const cleaned = finalText.replace(/\d{4}-\d{1,2}-\d{1,2}/g, ' ').replace(/\b(19|20)\d{2}\b/g, ' ');
         const nums = cleaned.match(/\d+(?:\.\d+)?/g) || [];
