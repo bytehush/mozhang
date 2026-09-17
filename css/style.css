@@ -672,7 +672,9 @@ td .op-btn.del:hover { background: rgba(181, 56, 46, .1); color: var(--cinnabar)
    工具挂在脊上随长表格滚动跟随（.rail-inner sticky）；「记录」是唯一金牌主按钮。
    窄屏（抽屉断点）自动转为页面之上的横排墨条，功能不丢 */
 .ledger-shell { display: flex; margin-bottom: var(--sp-2); }
-.ledger-shell .card.ledger-page { margin-bottom: 0; }
+/* 账页必须占满剩余宽度：flex 子项默认按内容定宽，卡片视图内容窄会让整页缩窄
+   （多选强制切卡片视图后账本变窄的根因）；min-width:0 允许表格视图下正常收缩 */
+.ledger-shell .card.ledger-page { flex: 1 1 auto; min-width: 0; margin-bottom: 0; }
 .spine-rail {
   flex: none; width: 58px;
   background: linear-gradient(180deg, #2b4238 0%, #1c3129 100%);
