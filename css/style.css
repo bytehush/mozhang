@@ -318,6 +318,34 @@ main { max-width: 920px; margin: 0 auto; padding: var(--sp-2) var(--sp-2) var(--
 .bs-plus { font-size: 30px; color: var(--teal); line-height: 1; }
 .bs-newtxt { font-size: 12.5px; color: var(--muted); letter-spacing: .15em; }
 
+/* ---------- 主体维度（V0.14.0）：给谁记的 ---------- */
+.subj-pick { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 0 2px; }
+.subj-chip {
+  border: 1px solid var(--line); background: rgba(253, 255, 253, .92);
+  color: var(--ink); font-size: 12.5px; font-weight: 600; font-family: inherit;
+  padding: 6px 13px; cursor: pointer;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  transition: border-color .2s ease, color .2s ease, background .2s ease;
+}
+.subj-chip:hover { border-color: var(--teal); }
+.subj-chip.active {
+  border-color: var(--teal); color: #fff;
+  background: linear-gradient(180deg, #31786d 0%, #1f574e 100%);
+}
+#nl-subject-custom { margin-top: 8px; }
+/* 书架封面上的主体签 */
+.bs-subj {
+  position: absolute; top: 8px; right: 8px; z-index: 2;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .1em;
+  color: var(--gold-deep); background: rgba(212, 180, 90, .14);
+  border: 1px solid rgba(212, 180, 90, .4);
+  padding: 1px 7px;
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+}
+/* 账本切换器里的主体标 */
+.ls-subj { font-style: normal; color: var(--gold-deep); font-weight: 700; margin-right: 1px; }
+.ls-subj::after { content: '·'; color: var(--muted); font-weight: 400; }
+
 /* ---------- 操作条（记录/导入/导出，紧凑） ---------- */
 .action-bar {
   display: inline-flex; flex-wrap: wrap; gap: 10px;

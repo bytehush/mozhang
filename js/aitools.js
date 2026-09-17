@@ -4,10 +4,13 @@
    chat.js 调 run() 在本地执行，把结果回喂给模型 —— 数据不再预先塞进提示词，
    模型只能通过工具拿到真实数据，没查过的就答不了，从机制上防编造。
    工具清单：
-     list_ledgers    列出所有账本（名称/类型/记录数/日期范围）
+     list_ledgers    列出所有账本（主体·名称/类型/记录数/日期范围）
      get_stats       某账本整体统计指标（复用模板 buildStats，中文键）
      get_daily       某账本按天汇总明细（中文键，模型可直接引用）
      get_day_records 某天全部原始记录（含时段/单价/备注等细节）
+     create_ledger   新建账本（主体+类型必须明确；创建由 app.js 确定性执行，含糊即拒绝）
+   主体维度：账本带 subject{rel,name}（我/爸爸/妈妈/爱人/孩子/全家/其他），
+   全名展示为"主体·账本名"；同名多本时会报歧义要求用主体区分——禁止模型猜。
    结果对象一律用中文键：模型引用更稳，界面数字核对也按这些文本比对。 */
 (function () {
   'use strict';
@@ -16,15 +19,28 @@
   const T = () => window.JG_TEMPLATES;
 
   // ---------- 账本与记录定位 ----------
+  const displayName = l => (l.subject ? l.subject.name : '我') + '·' + l.name;
   function resolveLedger(name) {
     const JG = window.JG;
     const ledgers = JG.getLedgers() || [];
     if (!ledgers.length) throw new Error('用户还没有创建任何账本');
     if (!name || !String(name).trim()) return JG.getActiveLedger();
     const q = String(name).trim();
-    let led = ledgers.find(l => l.name === q);
-    if (!led) led = ledgers.find(l => l.name.includes(q) || q.includes(l.name));
-    if (!led) throw new Error('找不到账本「' + q + '」。可用的账本有：' + ledgers.map(l => l.name).join('、'));
+    // ① 全名匹配（主体·账本名）
+    let led = ledgers.find(l => displayName(l) === q);
+    // ② 裸名匹配：同名多本时必须报歧义，让模型用主体区分或反问用户（禁止猜）
+    if (!led) {
+      const hits = ledgers.filter(l => l.name === q);
+      if (hits.length === 1) led = hits[0];
+      else if (hits.length > 1) throw new Error('有多本账本都叫「' + q + '」，请用主体区分：' + hits.map(displayName).join('、') + '（拿不准就反问用户）');
+    }
+    // ③ 模糊包含：唯一才接受
+    if (!led) {
+      const hits = ledgers.filter(l => displayName(l).includes(q) || l.name.includes(q));
+      if (hits.length === 1) led = hits[0];
+      else if (hits.length > 1) throw new Error('匹配到多本账本：' + hits.map(displayName).join('、') + '。请用完整名称（主体·账本名）重新调用');
+    }
+    if (!led) throw new Error('找不到账本「' + q + '」。可用的账本有：' + ledgers.map(displayName).join('、'));
     return led;
   }
   function recsOf(led) {
@@ -43,7 +59,7 @@
         const days = T().groupByDate(recs);
         range = days[0].date + ' ~ ' + days[days.length - 1].date;
       }
-      return { 账本: led.name, 类型: tplOf(led).name, 记录数: recs.length, 日期范围: range };
+      return { 账本: displayName(led), 主体: led.subject ? led.subject.name : '我', 类型: tplOf(led).name, 记录数: recs.length, 日期范围: range };
     });
   }
 
@@ -96,7 +112,7 @@
       general: { net: '结余元' },
     }[led.templateId] || {};
     return {
-      账本: led.name, 日期: date, 记录数: recs.length,
+      账本: displayName(led), 日期: date, 记录数: recs.length,
       记录: recs.map(r => {
         const row = {};
         Object.keys(r.v).forEach(k => { if (V[k]) row[V[k]] = r.v[k]; });
@@ -151,10 +167,27 @@
         parameters: {
           type: 'object',
           properties: {
-            ledger: { type: 'string', description: '账本名称，不填默认当前账本' },
+            ledger: { type: 'string', description: '账本名称（推荐用"主体·账本名"，如"妈妈·工资账本"），不填默认当前账本' },
             date: { type: 'string', description: '日期，格式 YYYY-MM-DD，如 2026-09-10' },
           },
           required: ['date'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'create_ledger',
+        description: '为用户新建一本账本。仅当用户明确要求新建、并且"给谁记的"（主体）和账本类型都已明确时才可调用；主体或类型不明确时必须先在回复里反问用户，禁止默认、禁止猜测。创建前建议先用 list_ledgers 检查是否已有同主体同名的账本。',
+        parameters: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: '账本名称，如"工资账本"；用户没起名时可给一个简洁的默认名' },
+            subject_rel: { type: 'string', enum: ['self', 'parent', 'spouse', 'child', 'family', 'other'], description: '给谁记的：self=用户本人，parent=父母，spouse=爱人，child=孩子，family=全家共用，other=其他（需同时给 subject_name）' },
+            subject_name: { type: 'string', description: '主体称呼：self 填"我"；parent/spouse/child 填具体称呼（如"妈妈"）；other 填自定义称呼（如"张姐"）' },
+            template: { type: 'string', enum: ['hourly', 'piece', 'general'], description: '账本类型：hourly=计时工账本，piece=计件工账本，general=通用收支账本' },
+          },
+          required: ['name', 'subject_rel', 'subject_name', 'template'],
         },
       },
     },
@@ -171,6 +204,7 @@
         case 'get_stats': return toolGetStats(args);
         case 'get_daily': return toolGetDaily(args);
         case 'get_day_records': return toolGetDayRecords(args);
+        case 'create_ledger': return window.JG.createLedgerFromAI(args);   // 创建由 app.js 确定性执行
         default: throw new Error('未知工具：' + name);
       }
     },

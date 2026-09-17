@@ -34,6 +34,7 @@
 
 - 启动：双击 `启动记账APP.bat`（或 `node server.js`）→ http://127.0.0.1:8787
 - 语法检查：`node --check js/xxx.js`
+- A 类测试（隔离/迁移/去重/原子性/备份往返）：`node tests/run-tests.js`（含 10 万次隔离模糊，FUZZ_N 可调）
 
 ## 编码约定
 

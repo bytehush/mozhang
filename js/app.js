@@ -41,11 +41,13 @@
   // 首次启动 / 旧版数据：迁移到多账本（迁移前旧数据留存备份键）
   function ensureLedgers() {
     ledgers = loadLedgers();
+    if (STORE.migrateSubjects(ledgers)) saveLedgersStore();   // 旧账本补主体（幂等，V0.14.0 主体维度）
     if (ledgers.length) return { migrated: false };
     const legacy = (() => { try { return JSON.parse(localStorage.getItem('jigong_records')); } catch { return null; } })();
     const old = settings.nRate || settings.oRate ? { nRate: settings.nRate, oRate: settings.oRate } : {};
     const led = {
       id: uid(), name: '服装厂计时工', templateId: 'hourly',
+      subject: { rel: 'self', name: '我' },
       settings: Object.assign({ nRate: 20, oRate: 30 }, old),
       createdAt: Date.now(),
     };
@@ -195,9 +197,10 @@
     const items = ledgers.map(l => {
       const tpl = tplOf(l);
       const count = (l.id === activeId ? records : loadLedRecords(l.id)).length;
+      const subj = l.subject ? l.subject.name : '我';
       return `<button class="ls-item ${l.id === activeId ? 'active' : ''}" data-led="${l.id}">
         <span class="ls-ico" data-icon="${tpl.icon.svg}" data-fallback="${tpl.icon.emoji}"></span>
-        <span class="ls-name">${esc(l.name)}</span>
+        <span class="ls-name"><em class="ls-subj">${esc(subj)}</em>${esc(l.name)}</span>
         <span class="ls-count">${count} 条</span>
       </button>`;
     }).join('');
@@ -736,9 +739,33 @@
     return s;
   }
   let newTplId = 'hourly';
+  let newSubject = { rel: 'self', name: '我' };   // 新建账本的"给谁记的"（主体维度：防同类账本分不清）
+  function renderSubjectPick() {
+    const box = $('nl-subject');
+    const opts = STORE.SUBJECTS.concat([{ rel: 'other', name: '其他' }]);
+    box.innerHTML = opts.map(s =>
+      `<button type="button" class="subj-chip ${newSubject.rel === s.rel && (s.rel !== 'other' || newSubject.rel === 'other') ? 'active' : ''}" data-rel="${s.rel}" data-name="${esc(s.name)}">${esc(s.name)}</button>`
+    ).join('');
+    box.querySelectorAll('.subj-chip').forEach(b => {
+      b.addEventListener('click', () => {
+        newSubject = { rel: b.dataset.rel, name: b.dataset.name };
+        $('nl-subject-custom').classList.toggle('hidden', newSubject.rel !== 'other');
+        if (newSubject.rel === 'other') { newSubject.name = ''; $('nl-subject-custom').value = ''; $('nl-subject-custom').focus(); }
+        renderSubjectPick();
+      });
+    });
+  }
+  function readSubjectPick() {
+    if (newSubject.rel !== 'other') return STORE.normSubject(newSubject);
+    return STORE.normSubject({ rel: 'other', name: $('nl-subject-custom').value });
+  }
   function openLedgerNew(triggerEl) {
     newTplId = 'hourly';
+    newSubject = { rel: 'self', name: '我' };
     renderTplPick();
+    renderSubjectPick();
+    $('nl-subject-custom').classList.add('hidden');
+    $('nl-subject-custom').value = '';
     $('nl-name').value = '';
     renderDefaultsBox($('nl-extra'), TPL().byId[newTplId], {});
     openModal('modal-ledger-new', triggerEl);
@@ -767,7 +794,12 @@
     if (btn.classList.contains('is-loading') || btn.classList.contains('is-done')) return;
     const tpl = TPL().byId[newTplId];
     const name = $('nl-name').value.trim() || tpl.name;
-    const led = { id: uid(), name, templateId: newTplId, settings: collectDefaults($('nl-extra')), createdAt: Date.now() };
+    const subject = readSubjectPick();
+    if (!subject) { toast('请先选"给谁记的"，或填写自定义称呼'); $('nl-subject-custom').focus(); return; }
+    // 同主体 + 同类型 + 同名 → 拒绝重复（防"用久了同类账本分不清"）
+    const dup = STORE.findDuplicateLedger(ledgers, { name, templateId: newTplId, subject });
+    if (dup) { toast(`已有一本「${subject.name}·${name}」，换个名字或换个主体再建`); return; }
+    const led = { id: uid(), name, templateId: newTplId, subject, settings: collectDefaults($('nl-extra')), createdAt: Date.now() };
     saveLedRecords(led.id, []);
     ledgers.push(led);
     saveLedgersStore();
@@ -775,7 +807,29 @@
     closeModal();
     switchLedger(led.id, { silent: true });
     if (shelfOpen) renderBookshelf();   // 书架模式下新账本立刻上架
-    toast('账本「' + name + '」已创建 ✓');
+    toast(`账本「${subject.name}·${name}」已创建 ✓`);
+  }
+
+  // AI 自主建账本（设计文档核心目标之一）：LLM 只决定"建什么"，创建由本函数确定性执行——
+  // 主体/类型不明确直接拒绝（让 AI 去反问用户），重复账本拒绝，先写记录后写账本列表（无可见脏状态）
+  function createLedgerFromAI(spec) {
+    spec = spec || {};
+    const tpl = TPL().byId[spec.template] || TPL().byId.general;
+    const name = String(spec.name || '').trim();
+    if (!name) return { error: '账本名称不能为空' };
+    const subject = STORE.normSubject({ rel: spec.subject_rel, name: spec.subject_name });
+    if (!subject) return { error: '主体不明确（不知道给谁记的）：请先反问用户，禁止默认' };
+    const dup = STORE.findDuplicateLedger(ledgers, { name, templateId: tpl.id, subject });
+    if (dup) return { error: `已存在同主体同类型的同名账本「${dup.subject.name}·${dup.name}」` };
+    const defaults = {};
+    (tpl.defaultsFields || []).forEach(f => { if (f.def != null) defaults[f.key] = f.def; });
+    const led = { id: uid(), name, templateId: tpl.id, subject, settings: defaults, createdAt: Date.now(), createdBy: 'ai' };
+    saveLedRecords(led.id, []);      // 先写记录存储，再写账本列表：中途失败不会出现"账本在但存储缺"的可见脏状态
+    ledgers.push(led);
+    saveLedgersStore();
+    renderLedgerSwitcher();
+    if (shelfOpen) renderBookshelf();
+    return { ok: true, 已创建: { 主体: subject.name, 名称: name, 类型: tpl.name, 模板: tpl.id } };
   }
 
   // ---------- 账本书架（展览模式：封面墙，点封面翻开进入该账本的记录表） ----------
@@ -794,6 +848,7 @@
       return `<button class="bs-card" data-led="${l.id}" style="--bs-accent:${tpl.accent || '#2e7d74'}">
         <span class="bs-inner">
           <span class="bs-spine"></span>
+          <span class="bs-subj">${esc(l.subject ? l.subject.name : '我')}</span>
           <span class="bs-seal" data-icon="${tpl.icon.svg}" data-fallback="${tpl.icon.emoji}"></span>
           <span class="bs-name">${esc(l.name)}</span>
           <span class="bs-tpl">${esc(tpl.name)}</span>
@@ -1007,7 +1062,7 @@
   function exportBackup() {
     const payload = {
       app: 'jigong', ver: 2, exportedAt: new Date().toISOString(), settings,
-      ledgers: ledgers.map(l => ({ id: l.id, name: l.name, templateId: l.templateId, settings: l.settings, customFields: l.customFields || [], createdAt: l.createdAt, records: loadLedRecords(l.id) })),
+      ledgers: ledgers.map(l => ({ id: l.id, name: l.name, templateId: l.templateId, subject: l.subject, settings: l.settings, customFields: l.customFields || [], createdAt: l.createdAt, records: loadLedRecords(l.id) })),
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -1055,9 +1110,11 @@
       const tpl = TPL().byId[inc.templateId] || TPL().byId.hourly;
       let led = ledgers.find(l => l.id === inc.id && l.templateId === inc.templateId);
       if (!led) {
-        led = { id: uid(), name: inc.name || tpl.name, templateId: tpl.id, settings: inc.settings || {}, createdAt: Date.now() };
+        led = { id: uid(), name: inc.name || tpl.name, templateId: tpl.id, subject: STORE.normSubject(inc.subject) || { rel: 'self', name: '我' }, settings: inc.settings || {}, createdAt: Date.now() };
         ledgers.push(led);
         addedLedgers++;
+      } else if (!led.subject) {
+        led.subject = STORE.normSubject(inc.subject) || { rel: 'self', name: '我' };   // 老账本从备份补主体
       }
       // 自定义字段：按键合并（同键以备份为准），保证备份里的字段定义与值一致
       const incCf = Array.isArray(inc.customFields) ? inc.customFields : [];
@@ -1317,6 +1374,7 @@
     getActiveLedger: () => activeLedger(),
     getActiveTemplate: () => tplOf(activeLedger()),
     switchTab, toast,
+    createLedgerFromAI,   // AI 建账本（aitools.js 的 create_ledger 工具调用；后端确定性执行）
     // AI 引用溯源：跳到记录表并定位一条具体记录（自动切账本/退出多选/重置筛选，定位后高亮闪烁）
     locateRecord(ledgerId, recId) {
       const led = ledgers.find(l => l.id === ledgerId);

@@ -95,8 +95,47 @@
     saveSettings(settings);
   }
 
+  // 主体维度（防"用久了同类账本分不清"）：账本记的是"给谁记的"
+  // rel 为结构化关系码，name 为用户看到的称呼；不确定时 UI/AI 都必须反问，禁止猜
+  const SUBJECTS = [
+    { rel: 'self', name: '我' },
+    { rel: 'parent', name: '爸爸' },
+    { rel: 'parent', name: '妈妈' },
+    { rel: 'spouse', name: '爱人' },
+    { rel: 'child', name: '孩子' },
+    { rel: 'family', name: '全家' },
+  ];
+  const SUBJECT_RELS = ['self', 'parent', 'spouse', 'child', 'family', 'other'];
+  function normSubject(s) {
+    if (!s || SUBJECT_RELS.indexOf(s.rel) < 0) return null;
+    const name = String(s.name || '').trim();
+    if (!name) return null;
+    return { rel: s.rel, name };
+  }
+  // 旧账本补主体（原地修改 ledgers），返回是否有改动；幂等
+  function migrateSubjects(ledgers) {
+    let changed = false;
+    (ledgers || []).forEach(l => {
+      if (!l || l.subject) return;
+      l.subject = { rel: 'self', name: '我' };
+      changed = true;
+    });
+    return changed;
+  }
+  // 同类同名去重（对应设计文档 UNIQUE(owner, subject, type, name)）：
+  // 同主体 + 同模板 + 同名 → 视为重复，禁止再建（返回已存在的账本）
+  function findDuplicateLedger(ledgers, spec) {
+    const subj = normSubject(spec.subject);
+    if (!subj) return null;
+    return (ledgers || []).find(l =>
+      l.templateId === spec.templateId &&
+      String(l.name).trim() === String(spec.name || '').trim() &&
+      l.subject && l.subject.rel === subj.rel && l.subject.name === subj.name) || null;
+  }
+
   window.STORE = {
     LS, PRESETS,
+    SUBJECTS, SUBJECT_RELS, normSubject, migrateSubjects, findDuplicateLedger,
     loadJSON, saveJSON, removeKey: k => localStorage.removeItem(k),
     loadSettings, saveSettings,
     loadLedgers, saveLedgers, loadLedRecords, saveLedRecords, removeLedRecords,
