@@ -872,19 +872,28 @@
       work.classList.remove('hidden');
     }
   }
+  // 翻开/返回共用的"扑向屏幕中心"几何：缩放倍数 + 把封面中心移到视口中心的位移
+  function shelfBlowGeom(cardEl) {
+    const r = cardEl.getBoundingClientRect();
+    const s = Math.max(window.innerWidth / r.width, window.innerHeight / r.height) * 1.15;
+    return {
+      scale: s,
+      x: (window.innerWidth - s * r.width) / 2 - r.left,
+      y: window.innerHeight / 2 - (r.top + r.height / 2),
+    };
+  }
   function openLedgerFromShelf(card) {
     const id = card.dataset.led;
     if (!id) return;
     switchLedger(id, { silent: true });
     if (REDUCED || !window.gsap) { shelfOpen = false; syncShelf(); return; }
     if (shelfTl) shelfTl.progress(1);   // 强制完成进行中的转场，避免两条 timeline 并发打架
-    // 容器变换转场：封面掀开 → 扑面放大铺满视口（非线性：越放越快）→ 化作记录表
+    // 容器变换转场：封面掀开 → 一边扑面放大一边飞向屏幕中心（非线性加速）→ 抵达后淡出 → 化作记录表
     const shelf = $('bookshelf');
     const work = $('ledger-workbench');
     const inner = card.querySelector('.bs-inner');
     const others = Array.from(card.parentElement.children).filter(el => el !== card);
-    const rect = card.getBoundingClientRect();
-    const blowScale = Math.max(window.innerWidth / rect.width, window.innerHeight / rect.height) * 1.15;
+    const blow = shelfBlowGeom(card);   // 缩放倍数 + "从当前位置移到屏幕中心"的位移
     shelf.style.pointerEvents = 'none';
     gsap.set(card, { zIndex: 30 });
     const tl = gsap.timeline({
@@ -897,12 +906,12 @@
       },
     });
     shelfTl = tl;
-    // 翻开与放大同步进行：同一条 tween、同一时长（0.85s）——封面边掀开边扑面放大
-    // 转场总时长 1.26s，与「返回」严格等长（两条转场时间长度一致）
-    tl.to(inner, { rotationY: -78, scale: blowScale, duration: 0.85, ease: 'power2.in' }, 0)
+    // 复合运动（同一 tween、同一时长 0.85s、非线性 power2.in）：掀开 + 放大 + 位移到屏幕中心
+    // 抵达中心段伴随透明度淡出（0.62s 起），化作记录表；总时长 1.26s，与「返回」严格等长
+    tl.to(inner, { rotationY: -78, scale: blow.scale, x: blow.x, y: blow.y, duration: 0.85, ease: 'power2.in' }, 0)
       .to(others, { opacity: 0, scale: 0.94, duration: 0.35, ease: 'expo.out' }, 0.12)
       .to(shelf, { opacity: 0, duration: 0.3, ease: 'power2.in' }, 0.55)
-      .to(inner, { opacity: 0, duration: 0.18, ease: 'power1.in' }, 0.72)
+      .to(inner, { opacity: 0, duration: 0.33, ease: 'power1.in' }, 0.62)
       .add(() => {
         shelfOpen = false;
         shelf.classList.add('hidden');
@@ -928,27 +937,26 @@
       },
     });
     shelfTl = tl;
-    // tween 全部预声明（禁动态 add），目标值用函数式在首次渲染时求值——任何时间跳跃下状态都收敛
+    // tween 全部预声明（禁动态 add），起点姿态在交棒回调里现算——任何时间跳跃下状态都收敛
     const activeId = (window.JG.getActiveLedger() || {}).id;
     const card = shelf.querySelector(`.bs-card[data-led="${activeId}"]`) || shelf.querySelector('.bs-card');
     const inner = card ? card.querySelector('.bs-inner') : null;
     const others = card ? Array.from(card.parentElement.children).filter(el => el !== card) : [];
-    const blowScale = () => {
-      const r = card.getBoundingClientRect();
-      return Math.max(window.innerWidth / r.width, window.innerHeight / r.height) * 1.15;
-    };
-    // 与「翻开」严格互为镜像：总时长同为 1.26s，主运动（缩回+转回）同为 0.85s
+    // 与「翻开」严格互为镜像：总时长同为 1.26s，主运动（缩回+转回+飞回原位）同为 0.85s
     tl.to(work, { opacity: 0, duration: 0.3, ease: 'power2.in' }, 0)
       .add(() => {
         work.classList.add('hidden');
         shelf.classList.remove('hidden', 'opening-stage');
         if (inner) {
           gsap.set(card, { zIndex: 30 });
-          gsap.set(inner, { scale: blowScale(), rotationY: -78, opacity: 1 });   // 起点=翻开+放大的终点姿态
+          const g = shelfBlowGeom(card);
+          // 起点=翻开的终点姿态：在屏幕中心、放大铺满、翻开状态、透明——然后淡入并飞回书架原位
+          gsap.set(inner, { x: g.x, y: g.y, scale: g.scale, rotationY: -78, opacity: 0 });
         }
         gsap.set(others, { opacity: 0 });
       }, 0.3)
-      .to(inner || {}, { scale: 1, rotationY: 0, duration: 0.85, ease: 'power2.out' }, 0.41)   // 缩回+转回（0.85s，与翻开等长）
+      .to(inner || {}, { x: 0, y: 0, scale: 1, rotationY: 0, duration: 0.85, ease: 'power2.out' }, 0.41)   // 飞回+缩回（0.85s，与翻开等长）
+      .to(inner || {}, { opacity: 1, duration: 0.31, ease: 'power1.out' }, 0.41)   // 淡入（镜像翻开的淡出）
       .to(others, { opacity: 1, duration: 0.4, ease: 'power1.out' }, 0.6);
   }
   // ---------- 自定义字段管理器（账本设置弹窗内编辑草稿） ----------
