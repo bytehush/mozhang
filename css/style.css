@@ -245,7 +245,7 @@ body.side-collapsed .main-wrap { margin-left: var(--side-w-min); }
   100% { transform: scale(1) translateY(0); opacity: 1; }
 }
 
-main { max-width: 920px; margin: 0 auto; padding: var(--sp-2) var(--sp-2) var(--sp-4); }
+main { max-width: 1200px; margin: 0 auto; padding: var(--sp-2) var(--sp-2) var(--sp-4); }
 .panel { display: none; }
 /* 注意：入场动画的 fill 用 backwards 而非 both——both 会把最终 transform 永久钉在面板上，
    成为页面内 position:sticky 的隐形杀手（sticky 需要祖先无 transform） */
