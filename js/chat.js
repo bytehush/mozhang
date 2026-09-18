@@ -15,6 +15,12 @@
 (function () {
   'use strict';
 
+  // AI 接口地址：本地版走 server.js 的 /api/ai；云端部署版由 js/cloud-config.js
+  // 提供 window.MOZHANG_CLOUD.aiProxy（HTTP 云函数转发地址），本地不受影响
+  function aiEndpoint() {
+    return (window.MOZHANG_CLOUD && window.MOZHANG_CLOUD.aiProxy) || '/api/ai';
+  }
+
   const SESSION_MSG_CAP = 80; // 每个会话最多保留的消息条数（本地全量，供摘要滚动压缩）
   const CTX_TURNS = 8;        // 发给模型的最近上下文条数（原文窗口）
   const MSG_CAP = 4000;       // 单条上下文截断长度
@@ -598,18 +604,52 @@
     }));
     return { messages: [{ role: 'system', content: sys.slice(0, 9000) }].concat(ctx), snap: null };
   }
-  // 降级模式（模型不支持工具调用时）：把真实数据直接装进提示词——即 V0.9.x 的"数据快照"方案。
-  // 检测到伪工具调用后自动切换，保证用户依然拿到基于真实数据的回答。
-  function buildDegraded() {
+  // 当前账本的真实数据快照（"数据直读"提示词与"系统直读兜底卡"共用，保证两处口径一致）
+  function ledgerData() {
     const JG = window.JG;
     const led = JG.getActiveLedger();
     const tpl = JG.getActiveTemplate();
     const records = JG.getRecords();
     const stats = tpl.ai.buildStats(records);
     const daily = tpl.ai.dailyLines(records);
-    const statsText = stats
-      ? '【统计 JSON】\n' + JSON.stringify(stats, null, 2) + '\n【每日明细（最后90条）】\n' + daily
-      : '（该账本还没有任何记录：提醒用户先记几笔才有数据可分析）';
+    return {
+      led, tpl, stats, daily,
+      label: led ? ((led.subject ? led.subject.name : '我') + '·' + led.name) : '',
+      statsText: stats
+        ? '【统计 JSON】\n' + JSON.stringify(stats, null, 2) + '\n【每日明细（最后90条）】\n' + daily
+        : '（该账本还没有任何记录：提醒用户先记几笔才有数据可分析）',
+    };
+  }
+  // 系统直读兜底卡（V0.15.4）：模型既不真调用工具、也不给回答时，直接把账本真实数据摆出来。
+  // 前提是"展示的每个数字都来自模板计算"，与模型无关——保证任何厂商/模型下用户都不会空手而归。
+  function localDataCard() {
+    const { led, stats, daily, label, statsText } = ledgerData();
+    const head = '（模型这轮没有给出回答，下面是**系统直接读取**的账本数据，不是模型编的）';
+    // 迷你 Markdown 渲染器不支持代码块，明细按普通行铺开；最多 30 天，避免刷屏
+    const dLines = String(daily || '').split('\n').filter(Boolean);
+    const body = stats
+      ? ['**【' + label + '】**']
+        .concat(Object.keys(stats).map(k => '- ' + k + '：' + stats[k]))
+        .concat(['', '**【每日明细】**'])
+        .concat(dLines.slice(-30))
+      : ['**【' + label + '】**这本账还没有记录，先记几笔再来分析。'];
+    const hint = '\n\n想让军师给建议：到「设置 → 模型设置」换一个支持「工具调用」的模型（智谱 GLM 系列、DeepSeek 对话模型都支持），换好后重发一次问题。';
+    return {
+      text: [head, ''].concat(body).join('\n') + hint,
+      snap: led ? {
+        tool: false,
+        ledger: led.name,
+        model: (window.JG.ModelSwitch.activeInfo() || { model: null }).model?.model || '',
+        time: Date.now(),
+        text: '【系统直读（模型未作答）】\n【账本】' + label + '\n' + statsText,
+        source: statsText,
+      } : null,
+    };
+  }
+  // 降级模式（模型不支持工具调用时）：把真实数据直接装进提示词——即 V0.9.x 的"数据快照"方案。
+  // 检测到伪工具调用后自动切换，保证用户依然拿到基于真实数据的回答。
+  function buildDegraded() {
+    const { led, tpl, stats, statsText } = ledgerData();
     const today = new Date();
     const pad = n => String(n).padStart(2, '0');
     const dstr = today.getFullYear() + '-' + pad(today.getMonth() + 1) + '-' + pad(today.getDate());
@@ -626,10 +666,10 @@
       role: m.role,
       content: String(m.content).slice(0, MSG_CAP),
     }));
-    const snap = led && records.length ? {
+    const snap = led && stats ? {
       tool: false,
       ledger: led.name,
-      model: (JG.ModelSwitch.activeInfo() || { model: null }).model?.model || '',
+      model: (window.JG.ModelSwitch.activeInfo() || { model: null }).model?.model || '',
       time: Date.now(),
       text: '【数据直读模式（模型不支持工具调用）】\n【账本】' + led.name + '\n' + statsText,
       source: statsText + (sx && sx.summary ? '\n【摘要】' + sx.summary : ''),
@@ -647,8 +687,8 @@
       function: { name: (tc.function && tc.function.name) || '', arguments: (tc.function && tc.function.arguments) || '{}' },
     };
   }
-  async function streamRequest(body, controller, onDelta) {
-    const resp = await fetch('/api/ai', {
+  async function streamRequest(body, controller, onDelta, allowNonStream) {
+    const resp = await fetch(aiEndpoint(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -676,6 +716,7 @@
     let buf = '';
     let done = false;
     let finishReason = null;
+    let sawAny = false;     // 流里是否真的来过数据（正文/思考/工具）——判断要不要走非流式兜底
     const toolCalls = [];   // 按 index 拼装：{id, type, function:{name, arguments}}
     const handleEvent = (event) => {
       for (const line of event.split('\n')) {
@@ -689,10 +730,11 @@
           if (c0 && c0.finish_reason) finishReason = c0.finish_reason;
           const d = (c0 && c0.delta) || {};
           // 思考型模型（glm-4.6 / deepseek-reasoner 等）先吐 reasoning_content：交给思考气泡实时显示
-          if (d.reasoning_content) onDelta(d.reasoning_content, 'reasoning');
-          if (d.content) onDelta(d.content, 'content');
+          if (d.reasoning_content) { sawAny = true; onDelta(d.reasoning_content, 'reasoning'); }
+          if (d.content) { sawAny = true; onDelta(d.content, 'content'); }
           // 工具调用增量：合并进对应槽位（index 对不上时顺序追加兜底）
           if (Array.isArray(d.tool_calls) && d.tool_calls.length) {
+            sawAny = true;
             onDelta('', 'tool');   // 通知发送方"有动静"（刷新看门狗、切换提示文案）
             d.tool_calls.forEach(tc => {
               const i = typeof tc.index === 'number' && toolCalls[tc.index] !== undefined ? tc.index
@@ -722,6 +764,26 @@
     }
     // 流结束：把没有以空行结尾的残留事件也处理掉
     if (buf.trim()) handleEvent(buf);
+    // 个别厂商/网关对 stream 请求只回心跳与结束事件（正文为空）：改走非流式重试一次。
+    // 关键：body 原样带上（含 tools），否则模型会因为"拿不到工具"而把调用写进正文演一遍。
+    if (allowNonStream && !sawAny && !toolCalls.filter(Boolean).length) {
+      const resp2 = await fetch(aiEndpoint(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({}, body, { stream: false })),
+        signal: controller.signal,
+      });
+      const data = await resp2.json().catch(() => null);
+      if (!resp2.ok || !data || data.error) {
+        throw new Error((data && data.error && data.error.message) || ('请求失败（HTTP ' + resp2.status + '）'));
+      }
+      const m = (data.choices && data.choices[0] && data.choices[0].message) || {};
+      if (m.content) onDelta(m.content, 'content');   // 同样过"假工具调用"检测
+      return {
+        finishReason: (data.choices && data.choices[0] && data.choices[0].finish_reason) || null,
+        toolCalls: (Array.isArray(m.tool_calls) ? m.tool_calls : []).map(normalizeToolCall),
+      };
+    }
     return { finishReason, toolCalls: toolCalls.filter(Boolean).map(normalizeToolCall) };
   }
 
@@ -765,6 +827,7 @@
     // 本次交换的全部工具调用记录（UI 卡片 + 持久化 + 数字核对依据）
     const toolLog = [];
     let degradedSnap = null;   // 数据直读模式的快照（供 📦 引用数据与数字核对）
+    let localFallback = false; // 模型既不调用工具也不给回答 → 本条改用系统直读兜底卡（真实数据）
     const makeSnap = () => toolLog.length ? {
       tool: true,
       ledger: led.name,
@@ -782,7 +845,7 @@
     let typer = null;
     const onDone = (finalText) => {
       if (!active || active.typer !== typer) return;   // 已被停止终结，忽略迟到的完成
-      finishExchange(el, bubble, finalText, false, makeSnap(), toolLog, degraded);
+      finishExchange(el, bubble, finalText, false, makeSnap(), toolLog, degraded, localFallback);
     };
     typer = makeTyper(bubble, onDone);
     active = { typer, bubble, el };
@@ -827,15 +890,14 @@
             if (thinkLineRef) thinkLineRef.querySelector('.al-verb').textContent = '推演';
             return;
           }
-          if (withTools) {
-            // 假工具调用检测：模型把"调用"写进正文（如 get_ledger {"name":…}）＝ 它拿不到/不会用工具
-            if (fakeHit) return;                      // 已判定的假调用内容不再展示
-            streamed += delta;
-            if (FAKE_TOOL_RE.test(streamed)) {
-              fakeHit = true;
-              if (thinkLineRef) { finishThink(thinkLineRef, acts); thinkLineRef = null; }
-              return;
-            }
+          // 假工具调用检测：模型把"调用"写进正文（如 get_ledger {"name":…}）＝ 它拿不到/不会用工具。
+          // 注意这里【不按 withTools 分流】——数据直读轮也要查：模型可能在任何模式里再演一次。
+          if (fakeHit) return;                      // 已判定的假调用内容不再展示
+          streamed += delta;
+          if (FAKE_TOOL_RE.test(streamed)) {
+            fakeHit = true;
+            if (thinkLineRef) { finishThink(thinkLineRef, acts); thinkLineRef = null; }
+            return;
           }
           if (!gotAny) {
             gotAny = true;
@@ -843,9 +905,16 @@
             thinkLineRef = null;
           }
           typer.push(delta);
-        });
+        }, true);   // allowNonStream：厂商流里没数据时，原样（含 tools）改走非流式重试
         if (!res.toolCalls.length) {
           if (fakeHit) {
+            if (!withTools) {
+              // 数据直读轮里模型仍在"表演调用"：它已经帮不上了 → 不再等它，直接系统直读兜底
+              typer.stop();
+              bubble.innerHTML = '';
+              localFallback = true;
+              break;
+            }
             // 该模型不会真调用工具：记住它，清掉这段"假调用"输出，切换「数据直读」模式重答
             toolIncapableModels.add(modelKey);
             degraded = true;
@@ -895,26 +964,22 @@
         gotAny = false;
       }
       clearWatch();
-      if (!typer.text().trim()) {
+      if (!typer.text().trim() && !localFallback) {
         if (round > AGENT_ROUNDS) throw new Error('AI 反复查询数据但没有给出回答，请换个问法或到「设置 → 模型设置」换个模型再试。');
-        // 流式全程没吐出内容（厂商 SSE 兼容问题或思考型模型耗尽输出额度）：自动降级非流式重试一次
-        const resp2 = await fetch('/api/ai', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(Object.assign({}, baseBody, { messages, stream: false })),
-          signal: controller.signal,
-        });
-        const data2 = await resp2.json().catch(() => null);
-        if (!resp2.ok || !data2 || data2.error) {
-          throw new Error((data2 && data2.error && data2.error.message) || `请求失败（HTTP ${resp2.status}）`);
-        }
-        const m2 = (data2.choices && data2.choices[0] && data2.choices[0].message) || {};
-        if (m2.tool_calls && m2.tool_calls.length) {
-          throw new Error('这个模型似乎不支持工具调用，请到「设置 → 模型设置」换一个支持工具的模型（如 glm-4-flash、deepseek-chat）。');
-        }
-        if (!m2.content) throw new Error('AI 没有返回内容，请稍后重试。');
-        if (!gotAny) { finishThink(thinkLineRef, acts); thinkLineRef = null; }
-        typer.push(m2.content);
+        // 整轮没吐出任何内容（厂商 SSE 兼容问题 / 思考型模型耗尽输出额度）：不空手而归，
+        // 走下面的「系统直读兜底卡」——非流式兜底已在 streamRequest 里做过（且带 tools）。
+        localFallback = true;
+      }
+      if (localFallback) {
+        // 系统直读兜底（V0.15.4）：数字全部来自模板计算，与模型无关；同时给出换模型的指引
+        const card = localDataCard();
+        degradedSnap = card.snap;
+        typer.stop();
+        bubble.innerHTML = '';
+        if (thinkLineRef) { finishThink(thinkLineRef, acts); thinkLineRef = null; }
+        typer = makeTyper(bubble, onDone);
+        active = { typer, bubble, el };
+        typer.push(card.text);
       }
       typer.finish();
     } catch (err) {
@@ -960,7 +1025,7 @@
 
   // 终结一次交换：流式正常完成与手动停止共用，保证按钮/历史状态一致
   // snap = 本次工具查询快照（用于「📦 引用数据」展示与数字核对徽章）；toolLog = 工具调用记录
-  function finishExchange(el, bubble, finalText, stopped, snap, toolLog, degraded) {
+  function finishExchange(el, bubble, finalText, stopped, snap, toolLog, degraded, localFallback) {
     bubble.innerHTML = renderMarkdown(finalText) +
       (stopped ? '<p class="cm-err">（已停止，内容不完整）</p>' : '');
     streaming = false;
@@ -982,7 +1047,13 @@
       maybeSummarize();   // 长对话滚动摘要（后台压缩，不阻塞界面）
       // 操作行（悬停显现图标组 + 数字核对徽章）
       const actions = buildMsgActions(el, finalText, snap, toolLog);
-      if (degraded) {
+      if (localFallback) {
+        // 模型既不调用工具也不给回答：本条由系统直接读账本（数字来自模板计算，不经过模型）
+        const badge = document.createElement('div');
+        badge.className = 'cm-check warn';
+        badge.textContent = '△ 模型未作答，本条账本数据由系统直接读取';
+        actions.appendChild(badge);
+      } else if (degraded) {
         // 该模型不支持工具调用：本条是用"数据直读"模式答的（数据依然真实，只是走快照）
         const badge = document.createElement('div');
         badge.className = 'cm-check warn';
@@ -1215,7 +1286,7 @@
     const cover = sx.messages.slice(0, sx.messages.length - CTX_TURNS);   // 待压缩的旧消息
     const content = (sx.summary ? '【既有摘要】\n' + sx.summary + '\n\n【新增对话】\n' : '') +
       cover.map(m => (m.role === 'user' ? '用户：' : '军师：') + String(m.content).slice(0, 600)).join('\n');
-    fetch('/api/ai', {
+    fetch(aiEndpoint(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

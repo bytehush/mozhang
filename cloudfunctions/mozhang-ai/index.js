@@ -1,34 +1,32 @@
 /**
- * 本地服务器：1) 提供网页文件  2) 转发 AI 请求到各模型厂商（OpenAI 兼容接口）
- * 启动方式：双击「启动记账APP.bat」，或命令行运行 node server.js
+ * 墨账 · 云端 AI 转发（HTTP 云函数，监听 9000 端口）
+ * 职责：网页部署到云端托管后，替代本地 server.js 的 /api/ai 转发。
+ *  - 接收浏览器 POST {apiKey, model, messages, baseUrl, stream, temperature, maxTokens, tools}
+ *  - 校验目标为公网 http/https（SSRF 防护，与 server.js 同一套逻辑）
+ *  - SSE 流式透传（与本地版一致）
+ *  - 全程带 CORS 头（托管域名与函数域名不同源）
+ * 不存储任何数据；apiKey 只在单次请求中透传。
  */
 const http = require('http');
-const fs = require('fs');
-const path = require('path');
 const dns = require('dns').promises;
 const net = require('net');
 
-const ROOT = __dirname;
-const BASE_PORT = 8787;
+const PORT = 9000;
 const ZHIPU_API = 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
 
-const MIME = {
-  '.html': 'text/html; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Max-Age': '86400',
 };
 
 function sendJSON(res, code, obj) {
   const body = JSON.stringify(obj);
-  res.writeHead(code, {
+  res.writeHead(code, Object.assign({
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
-  });
+  }, CORS_HEADERS));
   res.end(body);
 }
 
@@ -46,20 +44,20 @@ function readBody(req) {
   });
 }
 
-// ---------- 接口地址安全校验（仅允许公网 http/https） ----------
+// ---------- 接口地址安全校验（仅允许公网 http/https，防内网探测） ----------
 function assertPublicIP(ip) {
   const v4 = net.isIPv4(ip) ? ip.split('.').map(Number) : null;
   if (v4) {
     const [a, b, c] = v4;
     const bad =
       a === 0 || a === 10 || a === 127 ||
-      (a === 100 && b >= 64 && b <= 127) ||          // 运营商级 NAT
-      (a === 169 && b === 254) ||                    // 链路本地
-      (a === 172 && b >= 16 && b <= 31) ||           // 私网
-      (a === 192 && b === 168) ||                    // 私网
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
       (a === 192 && b === 0 && (c === 0 || c === 2)) ||
-      (a === 198 && (b === 18 || b === 19)) ||       // 基准测试段
-      a >= 224;                                      // 组播/保留
+      (a === 198 && (b === 18 || b === 19)) ||
+      a >= 224;
     if (bad) throw new Error('不允许访问内网或保留地址');
     return;
   }
@@ -88,12 +86,10 @@ async function assertPublicHttpURL(raw) {
 }
 
 async function handleAI(req, res) {
-  // 客户端断开检测挂在「响应」的 close 上：req 的 close 在新版 Node 里
-  // 请求体读完就会触发，会误中止上游请求，导致浏览器一直等不到回复
   let clientGone = false;
   res.on('close', () => { clientGone = true; });
   try {
-    const { apiKey, model, messages, temperature, baseUrl, stream, maxTokens } = await readBody(req);
+    const { apiKey, model, messages, temperature, baseUrl, stream, maxTokens, tools } = await readBody(req);
     if (!apiKey) return sendJSON(res, 400, { error: { message: '缺少 API Key，请先到「设置 → 模型设置」填写' } });
     if (!messages || !Array.isArray(messages)) return sendJSON(res, 400, { error: { message: '参数错误：messages 缺失' } });
 
@@ -107,7 +103,6 @@ async function handleAI(req, res) {
 
     const wantStream = stream === true;
     const controller = new AbortController();
-    // 浏览器中断（停止按钮/关页）时同步中止对厂商的请求
     res.on('close', () => { if (clientGone && !res.writableEnded) controller.abort(); });
 
     const resp = await fetch(urlObj, {
@@ -124,12 +119,11 @@ async function handleAI(req, res) {
         temperature: typeof temperature === 'number' ? temperature : 0.7,
         max_tokens: typeof maxTokens === 'number' ? Math.min(Math.max(maxTokens, 256), 32768) : 3072,
         stream: wantStream,
+        ...(Array.isArray(tools) && tools.length ? { tools } : {}),
       }),
     });
 
-    // 厂商返回错误（通常是 JSON），无论是否要求流式都原样转发
     if (!resp.ok || !resp.body || (wantStream && !(resp.headers.get('content-type') || '').includes('event-stream'))) {
-      // 有些厂商对 stream 请求也回 JSON；若拿到的是 SSE 就照流转发
       const ctype = resp.headers.get('content-type') || '';
       if (resp.ok && resp.body && ctype.includes('event-stream')) {
         // 落到下面的流式转发
@@ -143,13 +137,12 @@ async function handleAI(req, res) {
     }
 
     if (wantStream && (resp.headers.get('content-type') || '').includes('event-stream')) {
-      // SSE 流式透传：逐块转发，绝不缓冲
-      res.writeHead(200, {
+      res.writeHead(200, Object.assign({
         'Content-Type': 'text/event-stream; charset=utf-8',
         'Cache-Control': 'no-store',
         'Connection': 'keep-alive',
         'X-Accel-Buffering': 'no',
-      });
+      }, CORS_HEADERS));
       try {
         for await (const chunk of resp.body) {
           if (clientGone) break;
@@ -165,59 +158,27 @@ async function handleAI(req, res) {
     try { data = JSON.parse(text); } catch { data = { error: { message: text.slice(0, 500) } }; }
     sendJSON(res, resp.status, data);
   } catch (err) {
-    if (!clientGone) sendJSON(res, 500, { error: { message: '本地服务转发失败：' + err.message } });
+    if (!clientGone) sendJSON(res, 500, { error: { message: '云端转发失败：' + err.message } });
   }
-}
-
-function serveStatic(req, res) {
-  let urlPath = decodeURIComponent(req.url.split('?')[0]);
-  if (urlPath === '/') urlPath = '/index.html';
-  const filePath = path.normalize(path.join(ROOT, urlPath));
-  if (!filePath.startsWith(ROOT)) {
-    res.writeHead(403); res.end('Forbidden'); return;
-  }
-  fs.readFile(filePath, (err, buf) => {
-    if (err) {
-      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-      res.end('404 Not Found: ' + urlPath);
-      return;
-    }
-    res.writeHead(200, {
-      'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
-      'Cache-Control': 'no-store',
-    });
-    res.end(buf);
-  });
 }
 
 const server = http.createServer((req, res) => {
-  if (req.method === 'POST' && req.url.split('?')[0] === '/api/ai') {
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, CORS_HEADERS);
+    res.end();
+    return;
+  }
+  const pathname = (req.url || '/').split('?')[0];
+  if (req.method === 'POST' && (pathname === '/' || pathname === '/api/ai')) {
     handleAI(req, res);
   } else if (req.method === 'GET') {
-    serveStatic(req, res);
+    sendJSON(res, 200, { ok: true, service: 'mozhang-ai' });
   } else {
-    res.writeHead(405); res.end('Method Not Allowed');
+    res.writeHead(405, CORS_HEADERS);
+    res.end('Method Not Allowed');
   }
 });
 
-// 端口被占用时自动向后找 5 个
-function listen(port, tries) {
-  server.once('error', (err) => {
-    if (err.code === 'EADDRINUSE' && tries > 0) {
-      console.log(`端口 ${port} 被占用，改用 ${port + 1} ...`);
-      listen(port + 1, tries - 1);
-    } else {
-      console.error('启动失败：', err.message);
-    }
-  });
-  server.listen(port, '127.0.0.1', () => {
-    console.log('==============================================');
-    console.log('  墨账 · 多账本记账 已启动！');
-    console.log(`  请用浏览器打开:  http://127.0.0.1:${port}`);
-    console.log('  关闭窗口即可停止服务。数据保存在本机浏览器中。');
-    console.log('  AI 支持智谱/DeepSeek/通义/Kimi/自定义厂商。');
-    console.log('==============================================');
-  });
-}
-
-listen(BASE_PORT, 5);
+server.listen(PORT, () => {
+  console.log('mozhang-ai 已启动，监听端口 ' + PORT);
+});
