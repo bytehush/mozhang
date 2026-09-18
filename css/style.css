@@ -25,7 +25,12 @@ html { scrollbar-gutter: stable; }
   --cinnabar: #b5382e;
   --paper: rgba(255, 253, 246, .86);
   --line: rgba(46, 125, 116, .22);
-  --shadow-card: 0 10px 30px rgba(22, 36, 31, .10), 0 2px 6px rgba(22, 36, 31, .06);
+  /* 质感层（V0.15.2 苹果式"高级感"）：多层柔和阴影 + 发丝描边 + 顶部高光 + 纸纹颗粒 */
+  --shadow-card: 0 1px 2px rgba(22, 36, 31, .04), 0 6px 18px rgba(22, 36, 31, .055), 0 22px 52px rgba(22, 36, 31, .07);
+  --shadow-pop: 0 2px 8px rgba(22, 36, 31, .08), 0 18px 44px rgba(22, 36, 31, .16), 0 48px 110px rgba(22, 36, 31, .20);
+  --hairline: rgba(34, 50, 45, .085);
+  --sheen: inset 0 1px 0 rgba(255, 255, 255, .62);
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.028'/%3E%3C/svg%3E");
   --spring: cubic-bezier(.34, 1.56, .64, 1);
   --glide: cubic-bezier(.22, 1, .36, 1);
   --cut: 12px;
@@ -93,8 +98,8 @@ body::before {
   position: fixed; left: 0; top: 0; bottom: 0; z-index: 40;
   width: var(--side-w);
   display: flex; flex-direction: column;
-  background: linear-gradient(180deg, #22362e 0%, var(--ink-deep) 100%);
-  box-shadow: 4px 0 24px rgba(22, 36, 31, .28);
+  background-image: var(--grain), linear-gradient(180deg, #22362e 0%, var(--ink-deep) 100%);
+  box-shadow: 4px 0 28px rgba(22, 36, 31, .22);
   transition: width .4s var(--glide), transform .4s var(--glide);
 }
 /* 金色内框细线 */
@@ -199,10 +204,10 @@ body.side-collapsed .main-wrap { margin-left: var(--side-w-min); }
   height: var(--topbar-h);
   display: flex; align-items: center; gap: var(--sp-1);
   padding: 0 var(--sp-2);
-  background: rgba(246, 242, 231, .86);
-  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-  border-bottom: 1px solid var(--line);
-  box-shadow: 0 4px 18px rgba(22, 36, 31, .07);
+  background: rgba(246, 242, 231, .74);
+  backdrop-filter: blur(22px) saturate(1.3); -webkit-backdrop-filter: blur(22px) saturate(1.3);
+  border-bottom: 1px solid var(--hairline);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .5), 0 6px 22px rgba(22, 36, 31, .05);
 }
 .menu-btn {
   display: none;
@@ -353,12 +358,13 @@ main { max-width: 920px; margin: 0 auto; padding: var(--sp-2) var(--sp-2) var(--
 /* ---------- 宣纸卡片 ---------- */
 .card {
   position: relative;
-  background: var(--paper);
-  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(176, 138, 46, .26);   /* 暗金细边：与账页/结算行同一"纸边"语言 */
+  background-color: var(--paper);
+  background-image: var(--grain);   /* 极淡纸纹颗粒：材质感 */
+  backdrop-filter: blur(22px) saturate(1.2); -webkit-backdrop-filter: blur(22px) saturate(1.2);
+  border: 1px solid rgba(176, 138, 46, .2);
   padding: 20px;
   margin-bottom: var(--sp-2);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-card), var(--sheen);
   clip-path: polygon(
     var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)),
     calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut)
@@ -547,15 +553,16 @@ button:focus-visible, .side-item:focus-visible { outline: 2px solid var(--gold-b
 /* ---------- 记录表 ---------- */
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 760px; }
-th, td { padding: 10px 9px; text-align: center; border-bottom: 1px solid rgba(46, 125, 116, .13); white-space: nowrap; }
+th, td { padding: 10px 9px; text-align: center; border-bottom: 1px solid var(--hairline); white-space: nowrap; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 760px; font-variant-numeric: tabular-nums; }
 th {
   background: linear-gradient(180deg, #31786d 0%, #27655b 100%);
   color: #ecd9a0; font-weight: 700;
   position: sticky; top: 0;
 }
-tbody tr { transition: background .2s ease; }
-tbody tr:nth-child(even) { background: rgba(46, 125, 116, .045); }
-tbody tr:hover { background: rgba(46, 125, 116, .1); }
+tbody tr { transition: background .22s ease; }
+tbody tr:nth-child(even) { background: rgba(46, 125, 116, .032); }
+tbody tr:hover { background: rgba(46, 125, 116, .075); }
 td.money { color: var(--money); font-weight: 700; }
 td .op-btn { border: 1px solid transparent; background: none; cursor: pointer; font-size: 13px; padding: 4px 8px; transition: all .25s var(--spring); }
 td .op-btn.edit:hover { background: rgba(46, 125, 116, .12); color: var(--teal); transform: scale(1.08); }
@@ -618,8 +625,8 @@ td .op-btn.del:hover { background: rgba(181, 56, 46, .1); color: var(--cinnabar)
   position: fixed; inset: 0; z-index: 80;
   display: flex; align-items: center; justify-content: center;
   padding: var(--sp-1);
-  background: rgba(22, 36, 31, .5);
-  backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);
+  background: rgba(22, 36, 31, .42);
+  backdrop-filter: blur(10px) saturate(1.15); -webkit-backdrop-filter: blur(10px) saturate(1.15);
   animation: maskIn .3s ease both;
 }
 @keyframes maskIn { from { opacity: 0; } to { opacity: 1; } }
@@ -627,9 +634,10 @@ td .op-btn.del:hover { background: rgba(181, 56, 46, .1); color: var(--cinnabar)
   width: min(618px, 94vw);           /* 618 ≈ 382 × φ */
   max-height: 88vh;
   display: flex; flex-direction: column;
-  background: linear-gradient(180deg, rgba(255, 254, 248, .97), rgba(250, 246, 235, .97));
-  border: 1px solid rgba(46, 125, 116, .4);
-  box-shadow: 0 24px 60px rgba(22, 36, 31, .4), 0 0 0 1px rgba(212, 180, 90, .18);
+  background-color: rgba(255, 254, 248, .97);
+  background-image: var(--grain);
+  border: 1px solid rgba(176, 138, 46, .24);
+  box-shadow: var(--shadow-pop), var(--sheen);
   clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
   /* 入场由 POP（从触发按钮生长）经 Web Animations 驱动，此处不再叠加 CSS 动画 */
 }
@@ -679,7 +687,7 @@ td .op-btn.del:hover { background: rgba(181, 56, 46, .1); color: var(--cinnabar)
   transition: all .45s var(--spring);
   z-index: 99;
   clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
-  box-shadow: 0 12px 30px rgba(22, 36, 31, .4);
+  box-shadow: var(--shadow-pop);
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
 
@@ -688,6 +696,7 @@ td .op-btn.del:hover { background: rgba(181, 56, 46, .1); color: var(--cinnabar)
    ①左侧装订阴影 ②极淡中缝折线 ③装订缝线（青瓷虚线）④宣纸底 */
 .card.ledger-page {
   background:
+    var(--grain),
     linear-gradient(90deg, rgba(60, 50, 30, .06) 0, rgba(60, 50, 30, 0) 26px),
     linear-gradient(90deg,
       transparent calc(50% - 1px),
@@ -696,8 +705,8 @@ td .op-btn.del:hover { background: rgba(181, 56, 46, .1); color: var(--cinnabar)
       transparent calc(50% + 1px)),
     repeating-linear-gradient(180deg, rgba(46, 125, 116, .3) 0 6px, transparent 6px 12px) 14px 12px / 1px calc(100% - 24px) no-repeat,
     linear-gradient(180deg, #fdfbf4 0%, #faf7ee 100%);
-  border-color: rgba(176, 138, 46, .3);
-  box-shadow: var(--shadow-card), inset 0 0 46px rgba(176, 138, 46, .05);
+  border-color: rgba(176, 138, 46, .26);
+  box-shadow: var(--shadow-card), inset 0 0 46px rgba(176, 138, 46, .05), var(--sheen);
 }
 .page-head {
   display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap;
@@ -924,7 +933,7 @@ body.selecting .rec-card .rc-ops { display: none; }
   position: absolute; left: 12px; right: 12px; top: calc(100% + 2px); z-index: 50;
   background: linear-gradient(180deg, #24382f 0%, var(--ink-deep) 100%);
   border: 1px solid rgba(212, 180, 90, .45);
-  box-shadow: 0 16px 36px rgba(22, 36, 31, .5);
+  box-shadow: var(--shadow-pop);
   clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
   padding: 6px;
   animation: lsIn .25s var(--glide) both;
@@ -1358,7 +1367,7 @@ main:has(#tab-ai.active) { padding-bottom: 10px; }
   position: absolute; z-index: 60; min-width: 240px; max-width: 320px;
   background: linear-gradient(180deg, #24382f 0%, var(--ink-deep) 100%);
   border: 1px solid rgba(212, 180, 90, .45);
-  box-shadow: 0 16px 36px rgba(22, 36, 31, .5);
+  box-shadow: var(--shadow-pop);
   clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
   padding: 6px;
   animation: lsIn .25s var(--glide) both;
