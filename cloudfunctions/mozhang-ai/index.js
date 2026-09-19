@@ -45,24 +45,74 @@ function readBody(req) {
 }
 
 // ---------- 接口地址安全校验（仅允许公网 http/https，防内网探测） ----------
-function assertPublicIP(ip) {
-  const v4 = net.isIPv4(ip) ? ip.split('.').map(Number) : null;
-  if (v4) {
-    const [a, b, c] = v4;
-    const bad =
-      a === 0 || a === 10 || a === 127 ||
-      (a === 100 && b >= 64 && b <= 127) ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) ||
-      (a === 192 && b === 0 && (c === 0 || c === 2)) ||
-      (a === 198 && (b === 18 || b === 19)) ||
-      a >= 224;
-    if (bad) throw new Error('不允许访问内网或保留地址');
+// V0.15.6 加固（与 server.js 同一套逻辑）：URL.hostname 对 IPv6 保留中括号，
+// 原实现对 [::ffff:127.0.0.1] 等形态整段漏判。现剥离中括号/zone id 后展开为
+// 8 组 hextet 统一判断，并识别 IPv4 映射/兼容、NAT64、6to4 等内嵌 IPv4 的形态。
+function ipv4Forbidden(ip) {
+  const [a, b, c] = ip.split('.').map(Number);
+  return a === 0 || a === 10 || a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 192 && b === 0 && (c === 0 || c === 2)) ||
+    (a === 198 && (b === 18 || b === 19)) ||
+    a >= 224;
+}
+
+function expandIPv6(addr) {
+  if (!/^[\da-f:]+$/i.test(addr)) return null;
+  let head = addr, tail = null;
+  const dc = addr.indexOf('::');
+  if (dc >= 0) {
+    if (addr.indexOf('::', dc + 1) >= 0) return null;
+    head = addr.slice(0, dc);
+    tail = addr.slice(dc + 2);
+  }
+  const toParts = s => (s === '' ? [] : s.split(':'));
+  const headParts = toParts(head);
+  const tailParts = tail == null ? [] : toParts(tail);
+  const fill = 8 - headParts.length - tailParts.length;
+  if (dc < 0 && headParts.length !== 8) return null;
+  if (dc >= 0 && fill < 1) return null;
+  const parts = headParts.concat(dc >= 0 ? Array(fill).fill(0) : [], tailParts);
+  if (parts.length !== 8) return null;
+  return parts.map(s => parseInt(s, 16));
+}
+
+function assertPublicIP(rawIp) {
+  let ip = String(rawIp).trim().toLowerCase();
+  if (ip.startsWith('[') && ip.endsWith(']')) ip = ip.slice(1, -1);
+  const zone = ip.indexOf('%');
+  if (zone >= 0) ip = ip.slice(0, zone);
+  if (net.isIPv4(ip)) {
+    if (ipv4Forbidden(ip)) throw new Error('不允许访问内网或保留地址');
     return;
   }
-  const s = String(ip).toLowerCase();
-  if (s === '::' || s === '::1' || s.startsWith('fc') || s.startsWith('fd') || s.startsWith('fe80')) {
+  const h = expandIPv6(ip);
+  if (!h) throw new Error('不允许访问内网或保留地址');
+  const v4of = (hi, lo) => `${(hi >> 8) & 255}.${hi & 255}.${(lo >> 8) & 255}.${lo & 255}`;
+  if (h.every(x => x === 0) || (h.slice(0, 7).every(x => x === 0) && h[7] === 1)) {
+    throw new Error('不允许访问内网或保留地址');
+  }
+  if (h.slice(0, 5).every(x => x === 0) && (h[5] === 0xffff || h[5] === 0)) {
+    if (h[5] === 0) throw new Error('不允许访问内网或保留地址');
+    if (ipv4Forbidden(v4of(h[6], h[7]))) throw new Error('不允许访问内网或保留地址');
+    return;
+  }
+  if (h[0] === 0x64 && h[1] === 0xff9b && h.slice(2, 6).every(x => x === 0)) {
+    if (ipv4Forbidden(v4of(h[6], h[7]))) throw new Error('不允许访问内网或保留地址');
+    return;
+  }
+  if (h[0] === 0x2002) {
+    if (ipv4Forbidden(v4of(h[1], h[2]))) throw new Error('不允许访问内网或保留地址');
+    return;
+  }
+  const top16 = h[0];
+  if ((top16 >> 8) === 0xff ||
+      (top16 & 0xffc0) === 0xfe80 ||
+      (top16 & 0xfe00) === 0xfc00 ||
+      (top16 === 0x2001 && h[1] === 0)) {
     throw new Error('不允许访问内网或保留地址');
   }
 }
@@ -75,11 +125,13 @@ async function assertPublicHttpURL(raw) {
   if (!host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) {
     throw new Error('不允许的接口地址');
   }
-  if (net.isIP(host)) {
-    assertPublicIP(host);
+  // 关键：先剥掉 IPv6 中括号再判断，否则 net.isIP 对 "[::1]" 失效、字符串比对也对不上
+  const bareHost = host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : host;
+  if (net.isIP(bareHost)) {
+    assertPublicIP(bareHost);
     return u;
   }
-  const addrs = await dns.lookup(host, { all: true });
+  const addrs = await dns.lookup(bareHost, { all: true });
   if (!addrs || !addrs.length) throw new Error('接口地址无法解析');
   addrs.forEach(a => assertPublicIP(a.address));
   return u;

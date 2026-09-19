@@ -4,13 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>墨账 · 多账本记账</title>
-<script>
-  /* 临时诊断：收集加载期与运行期未捕获错误（含堆栈） */
-  window.__errors = [];
-  window.addEventListener('error', function (e) {
-    window.__errors.push((e.message || '未知错误') + ' @ ' + (e.filename || '').split('/').pop() + ':' + e.lineno + '\n' + (e.error && e.error.stack ? e.error.stack.split('\n').slice(0, 4).join('\n') : ''));
-  });
-</script>
+<!-- V0.15.6：诊断脚本由内联外置为 errhook.js（server 已加 CSP script-src 'self'） -->
+<script src="js/errhook.js"></script>
 <link rel="icon" type="image/png" href="美术资源/应用图标/favicon.png">
 <link rel="stylesheet" href="css/style.css">
 <script src="js/cloud-config.js"></script>
@@ -48,7 +43,7 @@
     <button class="side-item" data-tab="settings"><span class="ico" data-icon="nav-settings" data-fallback="⚙️"></span><span class="txt">设置</span></button>
   </nav>
   <div class="side-foot">
-    <span class="txt">V0.15.5 · 便携分享版</span>
+    <span class="txt">V0.15.6 · 安全加固</span>
     <button class="side-collapse" id="btn-collapse" title="收起/展开侧边栏"><span data-icon="ui-collapse" data-fallback="⟨"></span></button>
   </div>
 </aside>

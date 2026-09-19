@@ -12,6 +12,18 @@ const ROOT = __dirname;
 const BASE_PORT = 8787;
 const ZHIPU_API = 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
 
+// V0.15.6 安全响应头：nosniff 防嗅探；DENY 防点击劫持；
+// CSP 禁内联脚本/外域脚本（XSS 纵深防御，诊断脚本已外置为 js/errhook.js）
+const SECURITY_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'no-referrer',
+  'Content-Security-Policy':
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+    "img-src 'self' data:; connect-src 'self' https: http:; font-src 'self'; " +
+    "object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+};
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -47,24 +59,80 @@ function readBody(req) {
 }
 
 // ---------- 接口地址安全校验（仅允许公网 http/https） ----------
-function assertPublicIP(ip) {
-  const v4 = net.isIPv4(ip) ? ip.split('.').map(Number) : null;
-  if (v4) {
-    const [a, b, c] = v4;
-    const bad =
-      a === 0 || a === 10 || a === 127 ||
-      (a === 100 && b >= 64 && b <= 127) ||          // 运营商级 NAT
-      (a === 169 && b === 254) ||                    // 链路本地
-      (a === 172 && b >= 16 && b <= 31) ||           // 私网
-      (a === 192 && b === 168) ||                    // 私网
-      (a === 192 && b === 0 && (c === 0 || c === 2)) ||
-      (a === 198 && (b === 18 || b === 19)) ||       // 基准测试段
-      a >= 224;                                      // 组播/保留
-    if (bad) throw new Error('不允许访问内网或保留地址');
+// V0.15.6 加固：URL.hostname 对 IPv6 保留中括号（如 [::ffff:127.0.0.1]），原实现对中括号
+// 形态整段漏判。现统一剥离中括号/zone id 后展开为 8 组 hextet 判断，并识别
+// IPv4 映射（::ffff:0:0/96）、IPv4 兼容（::/96）、NAT64（64:ff9b::/96）、
+// 6to4（2002::/16）等内嵌 IPv4 的形态，还原成 IPv4 套用同一内网黑名单。
+function ipv4Forbidden(ip) {
+  const [a, b, c] = ip.split('.').map(Number);
+  return a === 0 || a === 10 || a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||          // 运营商级 NAT
+    (a === 169 && b === 254) ||                    // 链路本地
+    (a === 172 && b >= 16 && b <= 31) ||           // 私网
+    (a === 192 && b === 168) ||                    // 私网
+    (a === 192 && b === 0 && (c === 0 || c === 2)) ||
+    (a === 198 && (b === 18 || b === 19)) ||       // 基准测试段
+    a >= 224;                                      // 组播/保留
+}
+
+// 把（可能含 :: 压缩的）IPv6 展开为 8 个数字 hextet；形态非法返回 null
+function expandIPv6(addr) {
+  if (!/^[\da-f:]+$/i.test(addr)) return null;
+  let head = addr, tail = null;
+  const dc = addr.indexOf('::');
+  if (dc >= 0) {
+    if (addr.indexOf('::', dc + 1) >= 0) return null;   // 只允许一处 ::
+    head = addr.slice(0, dc);
+    tail = addr.slice(dc + 2);
+  }
+  const toParts = s => (s === '' ? [] : s.split(':'));
+  const headParts = toParts(head);
+  const tailParts = tail == null ? [] : toParts(tail);
+  const fill = 8 - headParts.length - tailParts.length;
+  if (dc < 0 && headParts.length !== 8) return null;
+  if (dc >= 0 && fill < 1) return null;                 // :: 至少压缩一个全零组
+  const parts = headParts.concat(dc >= 0 ? Array(fill).fill(0) : [], tailParts);
+  if (parts.length !== 8) return null;
+  return parts.map(s => parseInt(s, 16));
+}
+
+function assertPublicIP(rawIp) {
+  let ip = String(rawIp).trim().toLowerCase();
+  if (ip.startsWith('[') && ip.endsWith(']')) ip = ip.slice(1, -1);
+  const zone = ip.indexOf('%');
+  if (zone >= 0) ip = ip.slice(0, zone);
+  if (net.isIPv4(ip)) {
+    if (ipv4Forbidden(ip)) throw new Error('不允许访问内网或保留地址');
     return;
   }
-  const s = String(ip).toLowerCase();
-  if (s === '::' || s === '::1' || s.startsWith('fc') || s.startsWith('fd') || s.startsWith('fe80')) {
+  const h = expandIPv6(ip);
+  if (!h) throw new Error('不允许访问内网或保留地址');
+  const v4of = (hi, lo) => `${(hi >> 8) & 255}.${hi & 255}.${(lo >> 8) & 255}.${lo & 255}`;
+  // 未指定地址（::）与环回（::1）
+  if (h.every(x => x === 0) || (h.slice(0, 7).every(x => x === 0) && h[7] === 1)) {
+    throw new Error('不允许访问内网或保留地址');
+  }
+  // IPv4 映射（::ffff:0:0/96）还原成 IPv4 再判；IPv4 兼容（::/96）已弃用，一律拒绝
+  if (h.slice(0, 5).every(x => x === 0) && (h[5] === 0xffff || h[5] === 0)) {
+    if (h[5] === 0) throw new Error('不允许访问内网或保留地址');
+    if (ipv4Forbidden(v4of(h[6], h[7]))) throw new Error('不允许访问内网或保留地址');
+    return;
+  }
+  // NAT64（64:ff9b::/96）与 6to4（2002::/16）内嵌 IPv4 同样还原再判
+  if (h[0] === 0x64 && h[1] === 0xff9b && h.slice(2, 6).every(x => x === 0)) {
+    if (ipv4Forbidden(v4of(h[6], h[7]))) throw new Error('不允许访问内网或保留地址');
+    return;
+  }
+  if (h[0] === 0x2002) {
+    if (ipv4Forbidden(v4of(h[1], h[2]))) throw new Error('不允许访问内网或保留地址');
+    return;
+  }
+  // 组播 ff00::/8、链路本地 fe80::/10、唯一本地 fc00::/7、Teredo 2001:0::/32
+  const top16 = h[0];
+  if ((top16 >> 8) === 0xff ||
+      (top16 & 0xffc0) === 0xfe80 ||
+      (top16 & 0xfe00) === 0xfc00 ||
+      (top16 === 0x2001 && h[1] === 0)) {
     throw new Error('不允许访问内网或保留地址');
   }
 }
@@ -77,11 +145,13 @@ async function assertPublicHttpURL(raw) {
   if (!host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) {
     throw new Error('不允许的接口地址');
   }
-  if (net.isIP(host)) {
-    assertPublicIP(host);
+  // 关键：先剥掉 IPv6 中括号再判断，否则 net.isIP 对 "[::1]" 失效、字符串比对也对不上
+  const bareHost = host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : host;
+  if (net.isIP(bareHost)) {
+    assertPublicIP(bareHost);
     return u;
   }
-  const addrs = await dns.lookup(host, { all: true });
+  const addrs = await dns.lookup(bareHost, { all: true });
   if (!addrs || !addrs.length) throw new Error('接口地址无法解析');
   addrs.forEach(a => assertPublicIP(a.address));
   return u;
@@ -172,22 +242,35 @@ async function handleAI(req, res) {
 }
 
 function serveStatic(req, res) {
-  let urlPath = decodeURIComponent(req.url.split('?')[0]);
+  let urlPath;
+  // V0.15.6：decodeURIComponent 对畸形百分号序列（如 GET /%）会抛 URIError，
+  // 原先未捕获会带崩整个进程（单个请求即远程 DoS）——现在回落为 400
+  try { urlPath = decodeURIComponent(req.url.split('?')[0]); }
+  catch {
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8', 'X-Content-Type-Options': 'nosniff' });
+    res.end('Bad Request');
+    return;
+  }
   if (urlPath === '/') urlPath = '/index.html';
+  // 拒绝点开头的路径段（.git / .agents 等敏感目录与隐藏文件）
+  if (urlPath.split(/[\\/]/).some(seg => seg.startsWith('.'))) {
+    res.writeHead(403); res.end('Forbidden'); return;
+  }
   const filePath = path.normalize(path.join(ROOT, urlPath));
-  if (!filePath.startsWith(ROOT)) {
+  // 前缀比对带路径分隔符：否则同级同前缀目录（如「记录账单APP备份」）会被误放行
+  if (filePath !== ROOT && !filePath.startsWith(ROOT + path.sep)) {
     res.writeHead(403); res.end('Forbidden'); return;
   }
   fs.readFile(filePath, (err, buf) => {
     if (err) {
-      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'X-Content-Type-Options': 'nosniff' });
       res.end('404 Not Found: ' + urlPath);
       return;
     }
-    res.writeHead(200, {
+    res.writeHead(200, Object.assign({
       'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
       'Cache-Control': 'no-store',
-    });
+    }, SECURITY_HEADERS));
     res.end(buf);
   });
 }

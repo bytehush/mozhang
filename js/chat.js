@@ -239,7 +239,7 @@
       let body = '';
       if (ref.kind === 'hit') {
         body = '<div class="tr-evis">' + ref.items.map(it =>
-          `<button class="tr-ev" data-led="${it.ledgerId}" data-rec="${it.recId}">` +
+          `<button class="tr-ev" data-led="${esc(it.ledgerId)}" data-rec="${esc(it.recId)}">` +
           `<span class="tr-ev-date">${esc(it.date)}</span><span class="tr-ev-label">${esc(it.label)}</span>` +
           `<span class="tr-ev-val">${it.value}</span><span class="tr-ev-led">${esc(it.ledgerName)}</span></button>`).join('') +
           (ref.hitTotal > ref.items.length ? `<div class="tr-more">另有 ${ref.hitTotal - ref.items.length} 条相同数值</div>` : '') + '</div>';
@@ -247,7 +247,7 @@
         const op = ref.kind === 'sum' ? ' + ' : ' ÷ ';
         body = `<div class="tr-formula">${esc(ref.fieldLabel)}：${ref.items.map(it => it.value).join(op)}${ref.kind === 'sum' ? '' : ' ÷ ' + ref.items.length}</div>` +
           '<div class="tr-evis">' + ref.items.map(it =>
-            `<button class="tr-ev" data-led="${it.ledgerId}" data-rec="${it.recId}">` +
+            `<button class="tr-ev" data-led="${esc(it.ledgerId)}" data-rec="${esc(it.recId)}">` +
             `<span class="tr-ev-date">${esc(it.date)}</span><span class="tr-ev-label">${esc(it.label)}</span>` +
             `<span class="tr-ev-val">${it.value}</span><span class="tr-ev-led">${esc(it.ledgerName)}</span></button>`).join('') + '</div>';
       } else if (ref.kind === 'stat') {
@@ -1147,12 +1147,12 @@
   function buildSessionMenu() {
     const menu = $('session-menu');
     menu.innerHTML = sessions.map(sx => `
-      <div class="ss-item ${sx.id === sessionId ? 'active' : ''}" data-ss="${sx.id}">
+      <div class="ss-item ${sx.id === sessionId ? 'active' : ''}" data-ss="${esc(sx.id)}">
         <div class="ss-info">
           <span class="ss-title">${esc(sx.title)}</span>
           <span class="ss-meta">${sx.messages.length} 条 · ${fmtTime(sx.updatedAt)}</span>
         </div>
-        <button class="ss-del" data-ssdel="${sx.id}" title="删除会话">✕</button>
+        <button class="ss-del" data-ssdel="${esc(sx.id)}" title="删除会话">✕</button>
       </div>`).join('') +
       '<button class="ss-new" id="ss-new">＋ 新建会话</button>';
     menu.querySelectorAll('[data-ss]').forEach(item => {
@@ -1240,7 +1240,7 @@
     menu.innerHTML = (apis.length ? '' : '<div class="mm-note">还没有配置任何模型，请到「设置 → 模型设置」。</div>') +
       apis.map(a =>
         `<div class="mm-group">${a.name}${a.hasKey ? '' : '（未填 Key）'}</div>` +
-        a.models.map(m => `<button class="mm-item ${a.provider === cur.provider && cur.model && m.id === cur.model.id ? 'active' : ''}" data-ap="${a.provider}" data-mid="${m.id}">
+        a.models.map(m => `<button class="mm-item ${a.provider === cur.provider && cur.model && m.id === cur.model.id ? 'active' : ''}" data-ap="${esc(a.provider)}" data-mid="${esc(m.id)}">
           <span class="mm-label">${esc(m.label || m.model)}</span>
           <span class="mm-sub">${esc(m.model)}</span>
         </button>`).join('')

@@ -16,6 +16,9 @@
   const EASE_IN = 'ease-in';   // EASE_* 部分供 modals.js/records 动效共用
 
   let settings = STORE.loadSettings();
+  // 导入备份合并设置时的基线（V0.15.6 修复：此前引用了未定义的 DEFAULT_SETTINGS，
+  // 导入含设置的备份会在账本已合入后抛 ReferenceError，造成"提示失败但数据已变"的脏状态）
+  const DEFAULT_SETTINGS = {};
   let ledgers = [];
   let activeId = null;
   let records = [];             // 当前账本的记录
@@ -198,7 +201,7 @@
       const tpl = tplOf(l);
       const count = (l.id === activeId ? records : loadLedRecords(l.id)).length;
       const subj = l.subject ? l.subject.name : '我';
-      return `<button class="ls-item ${l.id === activeId ? 'active' : ''}" data-led="${l.id}">
+      return `<button class="ls-item ${l.id === activeId ? 'active' : ''}" data-led="${esc(l.id)}">
         <span class="ls-ico" data-icon="${tpl.icon.svg}" data-fallback="${tpl.icon.emoji}"></span>
         <span class="ls-name"><em class="ls-subj">${esc(subj)}</em>${esc(l.name)}</span>
         <span class="ls-count">${count} 条</span>
@@ -404,8 +407,9 @@
   // ---------- 记录渲染（表格 / 卡片，模板驱动） ----------
   function renderSummary() {
     const tpl = tplOf(activeLedger());
+    // V0.15.6：label/value 一律转义——汇总值由记录字段累加而来，导入数据可携带任意字符串
     $('summary-cards').innerHTML = tpl.summary(records)
-      .map(c => `<div class="sum-card"><div class="label">${c.label}</div><div class="value ${c.cls || ''}">${c.value}</div></div>`).join('');
+      .map(c => `<div class="sum-card"><div class="label">${esc(c.label)}</div><div class="value ${c.cls || ''}">${esc(c.value)}</div></div>`).join('');
   }
   // 账本页皮肤·页眉（V0.14.3，书架计划第二期）：打开的账本页眉写着"主体·账本名"与起止日期、条数
   function renderPageHead() {
@@ -447,12 +451,12 @@
         }).join('');
         const foot = tpl.foot ? tpl.foot(r) : '';
         return `
-        <div class="rec-card ${selectMode && selectedIds.has(r.id) ? 'selected' : ''}" data-rec-id="${r.id}" data-tags="${tpl.tagsOf(r).join(' ')}">
+        <div class="rec-card ${selectMode && selectedIds.has(r.id) ? 'selected' : ''}" data-rec-id="${esc(r.id)}" data-tags="${esc(tpl.tagsOf(r).join(' '))}">
           <span class="sel-dot" aria-hidden="true"></span>
           ${tpl.card(r)}
           ${customRows}
           ${foot ? `<div class="rc-foot"><span>${foot}</span></div>` : ''}
-          <div class="rc-ops"><button class="op-btn edit" data-edit="${r.id}">编辑</button><button class="op-btn del" data-del="${r.id}">删除</button></div>
+          <div class="rc-ops"><button class="op-btn edit" data-edit="${esc(r.id)}">编辑</button><button class="op-btn del" data-del="${esc(r.id)}">删除</button></div>
         </div>`;
       }).join('');
       bindRecordEvents(box);
@@ -462,11 +466,11 @@
       $('records-thead').innerHTML = '<tr>' + cols.map(c => `<th>${c.label}</th>`).join('') + '<th>操作</th></tr>';
       const tbody = $('records-tbody');
       tbody.innerHTML = sorted.map(r => `
-        <tr data-rec-id="${r.id}" data-tags="${tpl.tagsOf(r).join(' ')}">
+        <tr data-rec-id="${esc(r.id)}" data-tags="${esc(tpl.tagsOf(r).join(' '))}">
           ${cols.map(c => `<td>${c.get(r)}</td>`).join('')}
           <td>
-            <button class="op-btn edit" data-edit="${r.id}">编辑</button>
-            <button class="op-btn del" data-del="${r.id}">删除</button>
+            <button class="op-btn edit" data-edit="${esc(r.id)}">编辑</button>
+            <button class="op-btn del" data-del="${esc(r.id)}">删除</button>
           </td>
         </tr>`).join('');
       bindRecordEvents(tbody);
@@ -956,7 +960,7 @@
       const range = days.length
         ? days[0].date.slice(5).replace('-', '/') + ' – ' + days[days.length - 1].date.slice(5).replace('-', '/')
         : '暂无记录';
-      return `<button class="bs-card" data-led="${l.id}" style="--bs-accent:${tpl.accent || '#2e7d74'}">
+      return `<button class="bs-card" data-led="${esc(l.id)}" style="--bs-accent:${tpl.accent || '#2e7d74'}">
         <span class="bs-inner">
           <span class="bs-spine"></span>
           <span class="bs-subj">${esc(l.subject ? l.subject.name : '我')}</span>
@@ -1079,11 +1083,11 @@
   function renderCfManager() {
     const box = $('stl-cf');
     const rows = cfDraft.map(f => `
-      <div class="cf-row" data-cf-key="${f.key}">
-        <span class="cf-kind">${CF_KINDS[f.kind] || f.kind}</span>
+      <div class="cf-row" data-cf-key="${esc(f.key)}">
+        <span class="cf-kind">${esc(CF_KINDS[f.kind] || f.kind)}</span>
         <input type="text" data-cf-label value="${esc(f.label)}" placeholder="字段名称">
         <label class="cf-on"><input type="checkbox" data-cf-en ${f.enabled !== false ? 'checked' : ''}> 启用</label>
-        <button type="button" class="cf-del" data-cf-del="${f.key}" title="删除字段（历史值一并清除）">删除</button>
+        <button type="button" class="cf-del" data-cf-del="${esc(f.key)}" title="删除字段（历史值一并清除）">删除</button>
       </div>`).join('');
     box.innerHTML = (cfDraft.length ? rows : '<p class="hint" style="margin:4px 0">还没有自定义字段。</p>') + `
       <div class="cf-add">
@@ -1239,15 +1243,24 @@
       } else if (!led.subject) {
         led.subject = STORE.normSubject(inc.subject) || { rel: 'self', name: '我' };   // 老账本从备份补主体
       }
-      // 自定义字段：按键合并（同键以备份为准），保证备份里的字段定义与值一致
+      // 自定义字段：按键合并（同键以备份为准）。V0.15.6 消毒：key 必须形如本程序生成的
+      // uid（字母数字-下划线，≥8 位），不合规则重建；kind 白名单——防外部数据经
+      // data-cf-key / cf-kind 等属性插值注入 HTML
       const incCf = Array.isArray(inc.customFields) ? inc.customFields : [];
       if (incCf.length) {
         const cur = Array.isArray(led.customFields) ? led.customFields.slice() : [];
         incCf.forEach(f => {
-          if (!f || !f.key) return;
-          const i = cur.findIndex(x => x.key === f.key);
-          if (i >= 0) cur[i] = Object.assign({}, cur[i], f);
-          else cur.push(f);
+          if (!f || typeof f !== 'object') return;
+          const key = (typeof f.key === 'string' && /^[\w-]{8,}$/.test(f.key)) ? f.key : uid();
+          const item = {
+            key,
+            kind: ['text', 'number', 'money'].includes(f.kind) ? f.kind : 'text',
+            label: String(f.label || '').slice(0, 60),
+            enabled: f.enabled !== false,
+          };
+          const i = cur.findIndex(x => x.key === key);
+          if (i >= 0) cur[i] = Object.assign({}, cur[i], item);
+          else cur.push(item);
         });
         led.customFields = cur;
       }
@@ -1255,7 +1268,9 @@
       const sigs = new Set(existing.map(r => ledgerSignature(r, led)));
       (inc.records || []).forEach(r => {
         if (!r || !r.v || !r.v.date) return;
-        const rec = { id: r.id || uid(), v: r.v, m: r.m && Object.keys(r.m).length ? r.m : tpl.compute(r.v) };
+        // V0.15.6：id 一律重建（外部 id 不可信，曾可经 data-rec-id 属性插值注入 HTML）；
+        // 去重靠内容签名 ledgerSignature，与 id 无关
+        const rec = { id: uid(), v: r.v, m: r.m && Object.keys(r.m).length ? r.m : tpl.compute(r.v) };
         const sig = ledgerSignature(rec, led);
         if (sigs.has(sig)) return;
         sigs.add(sig);
@@ -1331,7 +1346,7 @@
   function renderApiTabs() {
     const tabs = $('api-tabs');
     tabs.innerHTML = Object.keys(settings.apis).map(p =>
-      `<button class="seg-btn ${p === editProvider ? 'active' : ''}" data-ap="${p}">${apiName(p)}</button>`).join('');
+      `<button class="seg-btn ${p === editProvider ? 'active' : ''}" data-ap="${esc(p)}">${apiName(p)}</button>`).join('');
     tabs.querySelectorAll('[data-ap]').forEach(b => {
       b.addEventListener('click', () => switchEditApi(b.dataset.ap));
     });
@@ -1348,12 +1363,12 @@
     box.innerHTML = (api.models.length ? '' : '<p class="hint" style="margin:4px 0">当前厂商还没有模型，点下方「＋ 添加模型」。</p>') +
       api.models.map(f => `
       <div class="mp-row ${f.id === api.currentModelId ? 'cur' : ''}">
-        <label class="mp-cur" title="设为当前模型"><input type="radio" name="mp-cur" ${f.id === api.currentModelId ? 'checked' : ''} data-mpcur="${f.id}"></label>
-        <input type="text" data-mpname="${f.id}" value="${esc(f.label)}" placeholder="显示名称">
-        <input type="text" data-mpmodel="${f.id}" value="${esc(f.model)}" placeholder="模型 ID">
-        <input type="number" data-mpctx="${f.id}" value="${f.context || 128}" min="1" title="上下文窗口（千 tokens）">
-        <input type="number" data-mpout="${f.id}" value="${f.maxOut || 4095}" min="1" title="最大输出（tokens）">
-        <button type="button" class="mp-del" data-mpdel="${f.id}" title="删除模型">✕</button>
+        <label class="mp-cur" title="设为当前模型"><input type="radio" name="mp-cur" ${f.id === api.currentModelId ? 'checked' : ''} data-mpcur="${esc(f.id)}"></label>
+        <input type="text" data-mpname="${esc(f.id)}" value="${esc(f.label)}" placeholder="显示名称">
+        <input type="text" data-mpmodel="${esc(f.id)}" value="${esc(f.model)}" placeholder="模型 ID">
+        <input type="number" data-mpctx="${esc(f.id)}" value="${f.context || 128}" min="1" title="上下文窗口（千 tokens）">
+        <input type="number" data-mpout="${esc(f.id)}" value="${f.maxOut || 4095}" min="1" title="最大输出（tokens）">
+        <button type="button" class="mp-del" data-mpdel="${esc(f.id)}" title="删除模型">✕</button>
       </div>`).join('');
     // 行内编辑：即时写回当前厂商的模型并自动持久化
     box.querySelectorAll('.mp-row').forEach(row => {
@@ -1511,7 +1526,9 @@
       switchTab('table');
       const flash = () => {
         setTimeout(() => {   // 等筛选/渲染就绪；不用 rAF（后台标签页 rAF 不触发）
-          const el = document.querySelector(`[data-rec-id="${recId}"]`);
+          // V0.15.6：recId 拼进选择器前转义引号与反斜杠（导入数据可携带任意字符串）
+          const sel = String(recId).replace(/[\\"]/g, '\\$&').replace(/\r\n?|\n/g, '\\a ');
+          const el = document.querySelector(`[data-rec-id="${sel}"]`);
           if (!el) return;
           el.scrollIntoView({ behavior: REDUCED ? 'auto' : 'smooth', block: 'center' });
           el.classList.remove('locate-flash');

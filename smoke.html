@@ -14,18 +14,7 @@
         padding: 16px 22px; border-radius: 10px; white-space: pre-wrap; }
   p.tip { color: #6f8079; font-size: 12px; margin-top: 20px; }
 </style>
-<script>
-  /* 冒烟测试页（V0.9.8）：改完代码后打开本页，自动断言核心路径。
-     注意：需通过 启动记账APP.bat（即 http://127.0.0.1:8787/smoke.html）打开，
-     直接双击文件（file://）会因 localStorage 受限而部分失败。 */
-  window.__errors = [];
-  window.addEventListener('error', e => window.__errors.push(
-    (e.message || '') + ' @ ' + (e.filename || '?') + ':' + (e.lineno || '?') + '
-堆栈: ' + (e.error && e.error.stack ? e.error.stack.split('
-').slice(0, 5).join('
-') : '(无堆栈)')
-  ));
-</script>
+<script src="js/errhook.js"></script>
 <script src="js/utils.js"></script>
 <script src="js/store.js"></script>
 <script src="js/modals.js"></script>
@@ -40,59 +29,10 @@
 <div id="result">运行中…</div>
 <pre id="log"></pre>
 <p class="tip">此页面仅用于开发自检，日常记账请回到主页面。</p>
-<script>
-(function () {
-  'use strict';
-  const log = [];
-  let all = true;
-  const ok = (name, cond) => { log.push((cond ? '✓ ' : '✗ ') + name); if (!cond) all = false; return cond; };
-
-  window.addEventListener('load', async () => {
-    await new Promise(r => setTimeout(r, 300));   // 等各模块 DOMContentLoaded 完成
-
-    // ① 加载期零报错
-    ok('页面加载零报错', (window.__errors || []).length === 0);
-
-    // ② utils 公共工具可用
-    ok('utils 工具可用', typeof window.UTIL === 'object'
-      && typeof window.UTIL.esc === 'function' && typeof window.UTIL.uid === 'function'
-      && typeof window.UTIL.toast === 'function');
-
-    // ③ 模板齐备（三类账本）
-    ok('模板齐备', Object.keys(window.JG_TEMPLATES.byId).length >= 3);
-
-    // ④ 账本已装载（迁移后至少一本）
-    const ledgers = window.STORE.loadLedgers();
-    ok('账本已装载', ledgers.length >= 1);
-
-    // ⑤ 厂商 API 分组齐备
-    const apis = (window.JG.getSettings().apis || {});
-    ok('厂商 API 就绪', Object.keys(apis).length >= 4);
-
-    // ⑥ 当前模型档案可用（默认智谱 GLM-4-Flash 预设）
-    const cur = window.JG.ModelSwitch.activeInfo();
-    ok('当前模型配置存在', !!(cur && (cur.model || (cur.models && cur.models.length))));
-
-    // ⑦ 模块挂载齐全
-    ok('模块挂载齐全', !!window.JG && !!window.JGChat && !!window.JGCharts
-      && !!window.JGIcons && !!window.MODAL && !!window.STORE && !!window.UTIL);
-
-    // ⑧ 会话存取正常（写入→读回→清理）
-    try {
-      const ledId = localStorage.getItem('jigong_active_ledger') || 'smoke';
-      const probe = [{ id: 'smoke', title: '冒烟探针', messages: [{ role: 'user', content: 'x' }], summary: '', summarizedCount: 0 }];
-      const bak = localStorage.getItem(key);
-      localStorage.setItem(key, JSON.stringify(probe));
-      const back = JSON.parse(localStorage.getItem(key));
-      ok('会话存取正常', back[0].id === 'smoke');
-      if (bak === null) localStorage.removeItem(key); else localStorage.setItem(key, bak);
-    } catch { ok('会话存取正常', false); }
-
-    document.getElementById('result').textContent = all ? '✅ 冒烟全部通过' : '❌ 存在失败项，见下方明细';
-    document.getElementById('result').className = all ? 'pass' : 'fail';
-    document.getElementById('log').textContent = log.join('\n');
-  });
-})();
-</script>
+<!-- V0.15.6：断言脚本由内联外置为 smoke-tests.js（server 已加 CSP，内联脚本会被拦截）。
+     本页用途：改完代码后打开 http://127.0.0.1:8787/smoke.html，自动断言核心路径；
+     直接双击文件（file://）会因 localStorage 受限而部分失败。 -->
+<script src="smoke-stubs.js"></script>
+<script src="smoke-tests.js"></script>
 </body>
 </html>

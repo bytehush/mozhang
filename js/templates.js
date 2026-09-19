@@ -7,7 +7,7 @@
   'use strict';
 
 
-  const { uid, round2, money, weekdayCN, hoursBetween } = window.UTIL;
+  const { uid, round2, money, weekdayCN, hoursBetween, esc } = window.UTIL;
 
 
   // 按日期聚合（同一天多条合并），升序，label=MM-DD
@@ -118,13 +118,13 @@
     filters: [{ key: 'ot', label: '仅加班', tag: 'ot' }],
     tagsOf: r => (r.m.oHours > 0 ? ['ot'] : []),
     columns: [
-      { label: '日期', get: r => r.v.date },
+      { label: '日期', get: r => esc(r.v.date) },
       { label: '星期', get: r => weekdayCN(r.v.date) },
-      { label: '正常时段', get: r => r.v.nStart + '~' + r.v.nEnd },
-      { label: '正常工时', get: r => r.m.nHours + 'h' },
-      { label: '加班时段', get: r => r.v.oStart ? r.v.oStart + '~' + r.v.oEnd : '—' },
-      { label: '加班工时', get: r => r.m.oHours ? r.m.oHours + 'h' : '—' },
-      { label: '总工时', get: r => '<b>' + r.m.totalHours + 'h</b>' },
+      { label: '正常时段', get: r => esc(r.v.nStart) + '~' + esc(r.v.nEnd) },
+      { label: '正常工时', get: r => esc(r.m.nHours) + 'h' },
+      { label: '加班时段', get: r => r.v.oStart ? esc(r.v.oStart) + '~' + esc(r.v.oEnd) : '—' },
+      { label: '加班工时', get: r => r.m.oHours ? esc(r.m.oHours) + 'h' : '—' },
+      { label: '总工时', get: r => '<b>' + esc(r.m.totalHours) + 'h</b>' },
       { label: '正常工资', get: r => '<span class="money">' + money(r.m.nPay) + '</span>' },
       { label: '加班费', get: r => r.m.oPay ? '<span class="money">' + money(r.m.oPay) + '</span>' : '—' },
       { label: '当日合计', get: r => '<span class="money">' + money(r.m.totalPay) + '</span>' },
@@ -132,15 +132,15 @@
     card(r) {
       return `
         <div class="rc-top">
-          <span class="rc-date">${r.v.date} ${weekdayCN(r.v.date)}</span>
+          <span class="rc-date">${esc(r.v.date)} ${weekdayCN(r.v.date)}</span>
           <span class="rc-pay">${money(r.m.totalPay)}</span>
         </div>
-        <div class="rc-row">正常班 ${r.v.nStart}~${r.v.nEnd} · ${r.m.nHours}h · <span class="money">${money(r.m.nPay)}</span></div>
+        <div class="rc-row">正常班 ${esc(r.v.nStart)}~${esc(r.v.nEnd)} · ${esc(r.m.nHours)}h · <span class="money">${money(r.m.nPay)}</span></div>
         <div class="rc-row ${r.m.oHours ? 'ot' : ''}">${r.v.oStart
-          ? `加班 ${r.v.oStart}~${r.v.oEnd} · ${r.m.oHours}h · ${money(r.m.oPay)}`
+          ? `加班 ${esc(r.v.oStart)}~${esc(r.v.oEnd)} · ${esc(r.m.oHours)}h · ${money(r.m.oPay)}`
           : '无加班'}</div>`;
     },
-    foot(r) { return '总工时 <b>' + r.m.totalHours + 'h</b>'; },
+    foot(r) { return '总工时 <b>' + esc(r.m.totalHours) + 'h</b>'; },
     summary(records) {
       let totalHours = 0, totalPay = 0, totalOT = 0; const days = new Set();
       records.forEach(r => { totalHours += r.m.totalHours; totalPay += r.m.totalPay; totalOT += r.m.oHours; days.add(r.v.date); });
@@ -276,7 +276,7 @@
     preview(v) {
       if (!(v.count > 0)) return '填好件数后，这里会实时算出工钱。';
       const pay = round2(v.count * (v.price || 0));
-      return '当日工钱：<b>' + v.count + '</b> 件 × ' + money(v.price || 0) + '/件 = <span class="money">' + money(pay) + '</span>';
+      return '当日工钱：<b>' + esc(v.count) + '</b> 件 × ' + money(v.price || 0) + '/件 = <span class="money">' + money(pay) + '</span>';
     },
     validate(v) {
       if (!v.date) return '请选择日期';
@@ -288,21 +288,21 @@
     filters: [],
     tagsOf: () => [],
     columns: [
-      { label: '日期', get: r => r.v.date },
+      { label: '日期', get: r => esc(r.v.date) },
       { label: '星期', get: r => weekdayCN(r.v.date) },
-      { label: '件数', get: r => '<b>' + r.v.count + '</b> 件' },
+      { label: '件数', get: r => '<b>' + esc(r.v.count) + '</b> 件' },
       { label: '单价', get: r => money(r.v.price) + '/件' },
       { label: '当日工钱', get: r => '<span class="money">' + money(r.m.pay) + '</span>' },
-      { label: '备注', get: r => r.v.note ? r.v.note : '—' },
+      { label: '备注', get: r => r.v.note ? esc(r.v.note) : '—' },
     ],
     card(r) {
       return `
         <div class="rc-top">
-          <span class="rc-date">${r.v.date} ${weekdayCN(r.v.date)}</span>
+          <span class="rc-date">${esc(r.v.date)} ${weekdayCN(r.v.date)}</span>
           <span class="rc-pay">${money(r.m.pay)}</span>
         </div>
-        <div class="rc-row">完成 <b>${r.v.count}</b> 件 × ${money(r.v.price)}/件</div>
-        ${r.v.note ? `<div class="rc-row">备注：${r.v.note}</div>` : ''}`;
+        <div class="rc-row">完成 <b>${esc(r.v.count)}</b> 件 × ${money(r.v.price)}/件</div>
+        ${r.v.note ? `<div class="rc-row">备注：${esc(r.v.note)}</div>` : ''}`;
     },
     foot(r) { return '当日工钱 <b class="money">' + money(r.m.pay) + '</b>'; },
     summary(records) {
@@ -438,23 +438,23 @@
       return t;
     },
     columns: [
-      { label: '日期', get: r => r.v.date },
-      { label: '项目', get: r => r.v.item || '—' },
+      { label: '日期', get: r => esc(r.v.date) },
+      { label: '项目', get: r => r.v.item ? esc(r.v.item) : '—' },
       { label: '收入', get: r => r.v.income ? '<span class="money">' + money(r.v.income) + '</span>' : '—' },
       { label: '支出', get: r => r.v.expense ? '<span class="money" style="color:var(--cinnabar)">' + money(r.v.expense) + '</span>' : '—' },
       { label: '当日结余', get: r => '<b class="' + (r.m.net < 0 ? 'money' : '') + '" style="' + (r.m.net < 0 ? 'color:var(--cinnabar)' : 'color:var(--gold-deep)') + '">' + money(r.m.net) + '</b>' },
-      { label: '备注', get: r => r.v.note || '—' },
+      { label: '备注', get: r => r.v.note ? esc(r.v.note) : '—' },
     ],
     card(r) {
       const neg = r.m.net < 0;
       return `
         <div class="rc-top">
-          <span class="rc-date">${r.v.date} ${weekdayCN(r.v.date)}</span>
+          <span class="rc-date">${esc(r.v.date)} ${weekdayCN(r.v.date)}</span>
           <span class="rc-pay" style="${neg ? 'color:var(--cinnabar)' : ''}">${money(r.m.net)}</span>
         </div>
-        <div class="rc-row">${r.v.item ? '项目：' + r.v.item : '（未填项目）'}</div>
+        <div class="rc-row">${r.v.item ? '项目：' + esc(r.v.item) : '（未填项目）'}</div>
         <div class="rc-row">收入 <span class="money">${money(r.v.income || 0)}</span> · 支出 <span class="money" style="color:var(--cinnabar)">${money(r.v.expense || 0)}</span></div>
-        ${r.v.note ? `<div class="rc-row">备注：${r.v.note}</div>` : ''}`;
+        ${r.v.note ? `<div class="rc-row">备注：${esc(r.v.note)}</div>` : ''}`;
     },
     foot() { return ''; },
     summary(records) {
@@ -563,9 +563,10 @@
   };
 
   // 旧版（V0.5 及之前）扁平记录 → 计时工模板新形态
+  // V0.15.6：id 一律重建——外部数据（旧备份/迁移源）的 id 不可信，渲染层属性插值按内部 uid 对齐
   function convertLegacyRecord(r) {
     const v = { date: r.date, nStart: r.nStart, nEnd: r.nEnd, oStart: r.oStart || null, oEnd: r.oEnd || null, nRate: r.nRate, oRate: r.oRate };
-    return { id: r.id || uid(), v, m: hourly.compute(v) };
+    return { id: uid(), v, m: hourly.compute(v) };
   }
 
   window.JG_TEMPLATES = { list: [hourly, piece, general], byId: { hourly, piece, general }, convertLegacyRecord, groupByDate };
