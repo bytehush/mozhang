@@ -112,6 +112,7 @@
       if (!v.date) return '请选择日期';
       if (!v.nStart || !v.nEnd) return '请填写正常班的开始和结束时间';
       if ((v.oStart && !v.oEnd) || (!v.oStart && v.oEnd)) return '加班开始和结束时间要填完整';
+      if (v.nRate < 0 || v.oRate < 0) return '时薪不能为负数';
       return null;
     },
     signature: r => [r.v.date, r.v.nStart, r.v.nEnd, r.v.oStart, r.v.oEnd].join('|'),
@@ -280,7 +281,9 @@
     },
     validate(v) {
       if (!v.date) return '请选择日期';
+      if (v.count < 0) return '完成件数不能为负数';
       if (!(v.count > 0)) return '请填写完成件数';
+      if (v.price < 0) return '单价不能为负数';
       if (!(v.price >= 0)) return '请填写单价';
       return null;
     },
@@ -423,6 +426,7 @@
     },
     validate(v) {
       if (!v.date) return '请选择日期';
+      if (v.income < 0 || v.expense < 0) return '收入和支出不能为负数';
       if (!((v.income > 0) || (v.expense > 0))) return '收入和支出至少填一项';
       return null;
     },

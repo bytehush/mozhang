@@ -786,6 +786,12 @@
     $('btn-save').addEventListener('click', saveRecord);
     $('btn-reset-form').addEventListener('click', resetForm);
   }
+  // V0.15.7：数值合法性守卫——1e308 这类输入 parseFloat 是合法的有限数，
+  // 但数量×单价可能溢出成 Infinity；一旦入账，账本合计永远变成 ¥Infinity
+  // （Infinity + 任何数 = Infinity），整本账废掉。存盘前必须拦下。
+  function hasNonFinite(o) {
+    return Object.values(o || {}).some(x => typeof x === 'number' && !Number.isFinite(x));
+  }
   async function saveRecord() {
     const btn = $('btn-save');
     if (btn.classList.contains('is-loading') || btn.classList.contains('is-done')) return;
@@ -794,7 +800,9 @@
     const v = readForm();
     const err = tpl.validate(v);
     if (err) { toast(err); return; }
+    if (hasNonFinite(v)) { toast('数值过大或无效，请检查输入'); return; }
     const m = tpl.compute(v);
+    if (hasNonFinite(m)) { toast('数值过大：乘算结果超出可记账范围'); return; }
     if (editingId) {
       const i = records.findIndex(r => r.id === editingId);
       if (i >= 0) records[i] = { id: editingId, v, m };
@@ -898,7 +906,7 @@
         newTplId = b.dataset.tpl;
         renderTplPick();
         const tpl = TPL().byId[newTplId];
-        $('nl-name').value = '';
+        // V0.15.7：只换 placeholder，不清已填名称——用户先起名再换模板，名字不应丢失
         $('nl-name').placeholder = '如：' + tpl.name;
         renderDefaultsBox($('nl-extra'), tpl, {});
       });
@@ -908,7 +916,10 @@
     const btn = $('btn-create-ledger');
     if (btn.classList.contains('is-loading') || btn.classList.contains('is-done')) return;
     const tpl = TPL().byId[newTplId];
-    const name = $('nl-name').value.trim() || tpl.name;
+    // V0.15.7：名称必填（界面标了 *，且与 AI 建账路径一致）——
+    // 原先空名静默回退成模板名，用户没起名也会"创建成功"
+    const name = $('nl-name').value.trim();
+    if (!name) { toast('请填写账本名称'); $('nl-name').focus(); return; }
     const subject = readSubjectPick();
     if (!subject) { toast('请先选"给谁记的"，或填写自定义称呼'); $('nl-subject-custom').focus(); return; }
     // 同主体 + 同类型 + 同名 → 拒绝重复（防"用久了同类账本分不清"）
@@ -1271,6 +1282,8 @@
         // V0.15.6：id 一律重建（外部 id 不可信，曾可经 data-rec-id 属性插值注入 HTML）；
         // 去重靠内容签名 ledgerSignature，与 id 无关
         const rec = { id: uid(), v: r.v, m: r.m && Object.keys(r.m).length ? r.m : tpl.compute(r.v) };
+        // V0.15.7：拒绝携带非有限数值的记录——外部备份不可信，防 Infinity 污染合计
+        if (hasNonFinite(rec.v) || hasNonFinite(rec.m)) return;
         const sig = ledgerSignature(rec, led);
         if (sigs.has(sig)) return;
         sigs.add(sig);
@@ -1377,8 +1390,11 @@
       if (!f) return;
       row.querySelector('[data-mpname]').addEventListener('input', e => { f.label = e.target.value.trim(); STORE.saveSettings(settings); });
       row.querySelector('[data-mpmodel]').addEventListener('input', e => { f.model = e.target.value.trim(); STORE.saveSettings(settings); });
-      row.querySelector('[data-mpctx]').addEventListener('input', e => { f.context = parseFloat(e.target.value) || 128; STORE.saveSettings(settings); });
-      row.querySelector('[data-mpout]').addEventListener('input', e => { f.maxOut = parseFloat(e.target.value) || 4095; STORE.saveSettings(settings); });
+      // V0.15.7：上下文/最大输出只接受 ≥1 的有限数（非法输入回退默认值）——
+      // 原先 parseFloat 直存，负数/超大数会让 AI 请求参数悄悄坏掉
+      const clampTokens = (raw, def) => { const n = parseFloat(raw); return Number.isFinite(n) && n >= 1 ? Math.min(Math.round(n), 1e7) : def; };
+      row.querySelector('[data-mpctx]').addEventListener('input', e => { f.context = clampTokens(e.target.value, 128); STORE.saveSettings(settings); });
+      row.querySelector('[data-mpout]').addEventListener('input', e => { f.maxOut = clampTokens(e.target.value, 4095); STORE.saveSettings(settings); });
       row.querySelector('[data-mpcur]').addEventListener('change', e => {
         if (e.target.checked) { api.currentModelId = id; STORE.saveSettings(settings); }
         renderModelRows();

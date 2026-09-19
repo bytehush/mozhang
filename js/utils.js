@@ -22,7 +22,15 @@
     return 'id-' + Array.from(buf).map(b => b.toString(16).padStart(2, '0')).join('');
   }
   function round2(n) { return Math.round(n * 100) / 100; }
-  function money(n) { return '¥' + round2(n).toFixed(2); }
+  // V0.15.7：非有限数（Infinity/NaN，可能来自导入数据或极端输入）一律显示 ¥—，
+  // 不让 ¥Infinity / ¥NaN 出现在任何金额位上。
+  // round2 内部 n*100 对 >1e306 的输入也会二次溢出，故格式化后再验一次。
+  function money(n) {
+    n = +n;
+    if (!Number.isFinite(n)) return '¥—';
+    const r = round2(n);
+    return Number.isFinite(r) ? '¥' + r.toFixed(2) : '¥—';
+  }
   function fmtDate(d) {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
