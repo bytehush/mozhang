@@ -11,3 +11,6 @@ Thumbs.db
 
 # 个人开发复盘（含求职资料，不公开）
 项目复盘/
+
+# GUI 自动化测试临时截图（一次性产物，不入库）
+gui-test-screenshots/
